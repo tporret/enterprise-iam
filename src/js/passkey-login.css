@@ -1,0 +1,75 @@
+/* Enterprise Auth – identity-first login styles for wp-login.php */
+
+/* ── Step containers ─────────────────────────────────────────────────────── */
+.ea-login-step {
+	margin: 12px 0 8px;
+}
+
+/* ── Continue button (full width, matches WP submit styling) ─────────────── */
+#ea-route-btn {
+	width: 100%;
+	height: 36px;
+	font-size: 14px;
+	margin-top: 4px;
+}
+
+/* ── Passkey button ──────────────────────────────────────────────────────── */
+.ea-passkey-btn {
+	width: 100%;
+	height: 36px;
+	font-size: 14px;
+	display: inline-flex !important;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+}
+
+.ea-passkey-btn svg {
+	flex-shrink: 0;
+}
+
+/* ── Divider ("or") ──────────────────────────────────────────────────────── */
+.ea-login-divider {
+	display: flex;
+	align-items: center;
+	margin: 14px 0;
+	color: #787c82;
+	font-size: 12px;
+	text-transform: lowercase;
+}
+
+.ea-login-divider::before,
+.ea-login-divider::after {
+	content: '';
+	flex: 1;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.ea-login-divider span {
+	padding: 0 10px;
+}
+
+/* ── Status text ─────────────────────────────────────────────────────────── */
+.ea-login-status {
+	margin: 6px 0 0;
+	font-size: 13px;
+	color: #787c82;
+	min-height: 1.3em;
+}
+
+/* ── Back link ───────────────────────────────────────────────────────────── */
+#ea-back-link {
+	text-align: center;
+	margin-top: 10px;
+}
+
+#ea-back-link a {
+	color: #2271b1;
+	text-decoration: none;
+	font-size: 13px;
+}
+
+#ea-back-link a:hover {
+	color: #135e96;
+	text-decoration: underline;
+}

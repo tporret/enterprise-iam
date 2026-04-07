@@ -1,0 +1,24 @@
+{
+    "name": "enterprise/iam",
+    "description": "Enterprise-grade Identity & Access Management plugin for WordPress.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.1",
+        "web-auth/webauthn-lib": "^5.2",
+        "jumbojett/openid-connect-php": "^1.0",
+        "simplesamlphp/saml2": "^6.1",
+        "onelogin/php-saml": "^4.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "EnterpriseAuth\\Plugin\\": "src/php/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "allow-plugins": {
+            "simplesamlphp/composer-xmlprovider-installer": true
+        }
+    }
+}

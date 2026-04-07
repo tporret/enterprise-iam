@@ -1,0 +1,520 @@
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+.ea-wrap {
+	max-width: 860px;
+	margin: 20px auto;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+		Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	color: #1e293b;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.ea-header {
+	background: linear-gradient( 135deg, #1e3a5f 0%, #0f172a 100% );
+	border-radius: 12px;
+	padding: 32px;
+	margin-bottom: 24px;
+	color: #f8fafc;
+}
+
+.ea-header__inner {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.ea-header__title {
+	font-size: 24px;
+	font-weight: 700;
+	margin: 0;
+	color: #f8fafc;
+}
+
+.ea-header__badge {
+	background: rgba( 255, 255, 255, 0.15 );
+	font-size: 12px;
+	font-weight: 600;
+	padding: 2px 10px;
+	border-radius: 999px;
+}
+
+.ea-header__subtitle {
+	margin: 8px 0 0;
+	font-size: 14px;
+	opacity: 0.8;
+}
+
+/* ── Card Grid ───────────────────────────────────────────────────────────── */
+.ea-card-grid {
+	display: grid;
+	gap: 16px;
+}
+
+.ea-card {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	padding: 24px;
+	transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.ea-card--active {
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px rgba( 59, 130, 246, 0.12 );
+}
+
+.ea-card__body {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 24px;
+}
+
+.ea-card__text {
+	flex: 1;
+}
+
+.ea-card__title {
+	font-size: 16px;
+	font-weight: 600;
+	margin: 0 0 6px;
+}
+
+.ea-card__desc {
+	font-size: 13px;
+	color: #64748b;
+	margin: 0;
+	line-height: 1.5;
+}
+
+/* ── Toggle Switch ───────────────────────────────────────────────────────── */
+.ea-toggle {
+	position: relative;
+	display: inline-flex;
+	flex-shrink: 0;
+	width: 48px;
+	height: 26px;
+	cursor: pointer;
+}
+
+.ea-toggle__input {
+	position: absolute;
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.ea-toggle__slider {
+	position: absolute;
+	inset: 0;
+	background: #cbd5e1;
+	border-radius: 999px;
+	transition: background 0.2s;
+}
+
+.ea-toggle__slider::before {
+	content: "";
+	position: absolute;
+	left: 3px;
+	top: 3px;
+	width: 20px;
+	height: 20px;
+	background: #fff;
+	border-radius: 50%;
+	transition: transform 0.2s;
+	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.15 );
+}
+
+.ea-toggle__input:checked + .ea-toggle__slider {
+	background: #3b82f6;
+}
+
+.ea-toggle__input:checked + .ea-toggle__slider::before {
+	transform: translateX( 22px );
+}
+
+.ea-toggle__input:disabled + .ea-toggle__slider {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* ── Loading ─────────────────────────────────────────────────────────────── */
+.ea-loading {
+	text-align: center;
+	padding: 48px;
+	color: #64748b;
+}
+
+/* ── Toast Notification ──────────────────────────────────────────────────── */
+.ea-toast {
+	position: fixed;
+	bottom: 32px;
+	right: 32px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 20px;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 500;
+	color: #fff;
+	box-shadow: 0 4px 12px rgba( 0, 0, 0, 0.15 );
+	animation: ea-toast-in 0.25s ease-out;
+	z-index: 100000;
+}
+
+.ea-toast--success {
+	background: #16a34a;
+}
+
+.ea-toast--error {
+	background: #dc2626;
+}
+
+.ea-toast__msg {
+	flex: 1;
+}
+
+.ea-toast__close {
+	background: none;
+	border: none;
+	color: inherit;
+	font-size: 18px;
+	cursor: pointer;
+	padding: 0;
+	line-height: 1;
+	opacity: 0.8;
+}
+
+.ea-toast__close:hover {
+	opacity: 1;
+}
+
+@keyframes ea-toast-in {
+	from {
+		opacity: 0;
+		transform: translateY( 12px );
+	}
+	to {
+		opacity: 1;
+		transform: translateY( 0 );
+	}
+}
+
+/* ── Button ──────────────────────────────────────────────────────────────── */
+.ea-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 20px;
+	border: none;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background 0.15s, opacity 0.15s;
+	flex-shrink: 0;
+}
+
+.ea-btn--primary {
+	background: #3b82f6;
+	color: #fff;
+}
+
+.ea-btn--primary:hover {
+	background: #2563eb;
+}
+
+.ea-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+/* ── Passkey card body adjustment ─────────────────────────────────────────── */
+.ea-card__body--passkey {
+	align-items: center;
+}
+
+/* ── Tab Navigation ──────────────────────────────────────────────────────── */
+.ea-tabs {
+	display: flex;
+	gap: 0;
+	margin-bottom: 24px;
+	border-bottom: 2px solid #e2e8f0;
+}
+
+.ea-tabs__btn {
+	padding: 10px 20px;
+	border: none;
+	background: none;
+	font-size: 14px;
+	font-weight: 600;
+	color: #64748b;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -2px;
+	transition: color 0.15s, border-color 0.15s;
+}
+
+.ea-tabs__btn:hover {
+	color: #1e293b;
+}
+
+.ea-tabs__btn--active {
+	color: #3b82f6;
+	border-bottom-color: #3b82f6;
+}
+
+/* ── SAML Section ────────────────────────────────────────────────────────── */
+.ea-saml__heading {
+	font-size: 18px;
+	font-weight: 700;
+	margin: 0 0 20px;
+	color: #1e293b;
+}
+
+/* ── Copy Field ──────────────────────────────────────────────────────────── */
+.ea-copy-field {
+	margin-bottom: 12px;
+}
+
+.ea-copy-field__label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: #64748b;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin-bottom: 4px;
+}
+
+.ea-copy-field__row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.ea-copy-field__value {
+	flex: 1;
+	background: #f1f5f9;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	padding: 8px 12px;
+	font-size: 13px;
+	color: #334155;
+	word-break: break-all;
+}
+
+/* ── Form Elements ───────────────────────────────────────────────────────── */
+.ea-form-group {
+	margin-bottom: 16px;
+}
+
+.ea-label {
+	display: block;
+	font-size: 13px;
+	font-weight: 600;
+	color: #334155;
+	margin-bottom: 4px;
+}
+
+.ea-label__hint {
+	font-weight: 400;
+	color: #94a3b8;
+}
+
+.ea-input {
+	width: 100%;
+	padding: 8px 12px;
+	border: 1px solid #cbd5e1;
+	border-radius: 6px;
+	font-size: 14px;
+	color: #1e293b;
+	background: #fff;
+	transition: border-color 0.15s;
+	box-sizing: border-box;
+}
+
+.ea-input:focus {
+	outline: none;
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px rgba( 59, 130, 246, 0.12 );
+}
+
+.ea-textarea {
+	resize: vertical;
+	font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+/* ── Role Mapping Row ────────────────────────────────────────────────────── */
+.ea-role-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 8px;
+	align-items: center;
+}
+
+.ea-role-row__group {
+	flex: 1;
+}
+
+.ea-role-row__role {
+	width: 180px;
+	flex-shrink: 0;
+}
+
+/* ── Form Actions ────────────────────────────────────────────────────────── */
+.ea-form-actions {
+	display: flex;
+	gap: 10px;
+	margin-top: 24px;
+	padding-top: 16px;
+	border-top: 1px solid #e2e8f0;
+}
+
+/* ── Button Variants ─────────────────────────────────────────────────────── */
+.ea-btn--secondary {
+	background: #f1f5f9;
+	color: #334155;
+	border: 1px solid #cbd5e1;
+}
+
+.ea-btn--secondary:hover {
+	background: #e2e8f0;
+}
+
+.ea-btn--danger {
+	background: #fef2f2;
+	color: #dc2626;
+	border: 1px solid #fecaca;
+}
+
+.ea-btn--danger:hover {
+	background: #fee2e2;
+}
+
+.ea-btn--small {
+	padding: 6px 12px;
+	font-size: 12px;
+	border-radius: 6px;
+}
+
+/* ── IdP Table ───────────────────────────────────────────────────────────── */
+.ea-idp-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-top: 16px;
+	font-size: 13px;
+}
+
+.ea-idp-table th {
+	text-align: left;
+	font-weight: 600;
+	color: #64748b;
+	padding: 8px 12px;
+	border-bottom: 2px solid #e2e8f0;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.ea-idp-table td {
+	padding: 10px 12px;
+	border-bottom: 1px solid #f1f5f9;
+	color: #334155;
+}
+
+.ea-idp-table tbody tr:hover {
+	background: #f8fafc;
+}
+
+/* ── Badge ───────────────────────────────────────────────────────────────── */
+.ea-badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.ea-badge--active {
+	background: #dcfce7;
+	color: #166534;
+}
+
+.ea-badge--inactive {
+	background: #f1f5f9;
+	color: #64748b;
+}
+
+/* ── Metadata Upload ─────────────────────────────────────────────────────── */
+.ea-upload-meta {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 20px;
+	padding: 14px 16px;
+	background: #f8fafc;
+	border: 1px dashed #cbd5e1;
+	border-radius: 8px;
+}
+
+.ea-upload-meta__label {
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.ea-upload-meta__input {
+	display: none;
+}
+
+.ea-upload-meta__hint {
+	font-size: 12px;
+	color: #64748b;
+	line-height: 1.4;
+}
+
+/* ── OIDC Discovery Box ─────────────────────────────────────────────────── */
+.ea-discovery {
+	margin-bottom: 20px;
+	padding: 16px;
+	background: linear-gradient( 135deg, #eff6ff 0%, #f0fdf4 100% );
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+}
+
+.ea-discovery__header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 4px;
+}
+
+.ea-discovery__icon {
+	font-size: 16px;
+}
+
+.ea-discovery__title {
+	font-size: 14px;
+	font-weight: 700;
+	color: #1e3a5f;
+}
+
+.ea-discovery__desc {
+	font-size: 12px;
+	color: #64748b;
+	margin: 0 0 10px;
+	line-height: 1.4;
+}
+
+.ea-discovery__row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.ea-discovery__input {
+	flex: 1;
+}
