@@ -97,11 +97,12 @@ export default function SamlSettings( { showToast } ) {
 	const acsUrl = `${ siteUrl }/wp-json/enterprise-auth/v1/saml/acs`;
 	const metadataUrl = `${ siteUrl }/wp-json/enterprise-auth/v1/saml/metadata`;
 
-	// Load idps on mount.
+	// Load IdPs on mount (filter to SAML only for display).
 	const loadIdps = useCallback( () => {
 		apiFetch( { path: 'enterprise-auth/v1/idps' } )
 			.then( ( data ) => {
-				setIdps( Array.isArray( data ) ? data : [] );
+				const all = Array.isArray( data ) ? data : [];
+				setIdps( all.filter( ( idp ) => idp.protocol === 'saml' ) );
 				setLoaded( true );
 			} )
 			.catch( () => {
