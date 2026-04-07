@@ -28,25 +28,29 @@ final class PasskeyLoginController {
 	private const CHALLENGE_TTL = 60; // seconds
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, self::ROUTE, [
-			[
-				'methods'             => \WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_request_options' ],
-				'permission_callback' => '__return_true', // public – login page
-				'args'                => [
-					'email' => [
-						'type'              => 'string',
-						'required'          => false,
-						'sanitize_callback' => 'sanitize_email',
-					],
-				],
-			],
-			[
-				'methods'             => \WP_REST_Server::CREATABLE,
-				'callback'            => [ $this, 'verify_assertion' ],
-				'permission_callback' => '__return_true', // public – login page
-			],
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			self::ROUTE,
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_request_options' ),
+					'permission_callback' => '__return_true', // public – login page
+					'args'                => array(
+						'email' => array(
+							'type'              => 'string',
+							'required'          => false,
+							'sanitize_callback' => 'sanitize_email',
+						),
+					),
+				),
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'verify_assertion' ),
+					'permission_callback' => '__return_true', // public – login page
+				),
+			)
+		);
 	}
 
 	/**
@@ -59,7 +63,7 @@ final class PasskeyLoginController {
 		$email     = $request->get_param( 'email' );
 		$challenge = WebAuthnHelper::generate_challenge();
 
-		$allow_credentials = [];
+		$allow_credentials = array();
 		$user_id           = 0;
 
 		if ( $email ) {
@@ -69,8 +73,8 @@ final class PasskeyLoginController {
 				// No allowCredentials means the browser will fail gracefully.
 				$user_id = 0;
 			} else {
-				$user_id    = (int) $user->ID;
-				$sources    = CredentialRepository::find_all_for_user( $user_id );
+				$user_id           = (int) $user->ID;
+				$sources           = CredentialRepository::find_all_for_user( $user_id );
 				$allow_credentials = array_map(
 					static fn( $src ) => $src->getPublicKeyCredentialDescriptor(),
 					$sources
@@ -90,15 +94,17 @@ final class PasskeyLoginController {
 		$session_key = bin2hex( random_bytes( 16 ) );
 		set_transient(
 			self::TRANSIENT . $session_key,
-			wp_json_encode( [
-				'options' => WebAuthnHelper::serializer()->serialize( $options, 'json' ),
-				'user_id' => $user_id,
-			] ),
+			wp_json_encode(
+				array(
+					'options' => WebAuthnHelper::serializer()->serialize( $options, 'json' ),
+					'user_id' => $user_id,
+				)
+			),
 			self::CHALLENGE_TTL
 		);
 
-		$json = WebAuthnHelper::serializer()->serialize( $options, 'json' );
-		$data = json_decode( $json, true );
+		$json                = WebAuthnHelper::serializer()->serialize( $options, 'json' );
+		$data                = json_decode( $json, true );
 		$data['session_key'] = $session_key;
 
 		return new \WP_REST_Response( $data, 200 );
@@ -108,22 +114,22 @@ final class PasskeyLoginController {
 	 * POST – verify the assertion and log the user in.
 	 */
 	public function verify_assertion( \WP_REST_Request $request ): \WP_REST_Response {
-		$body       = json_decode( $request->get_body(), true );
+		$body        = json_decode( $request->get_body(), true );
 		$session_key = sanitize_text_field( $body['session_key'] ?? '' );
 
 		if ( ! $session_key ) {
-			return new \WP_REST_Response( [ 'error' => 'Missing session key.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'Missing session key.' ), 400 );
 		}
 
 		$stored_raw = get_transient( self::TRANSIENT . $session_key );
 		delete_transient( self::TRANSIENT . $session_key );
 
 		if ( ! $stored_raw ) {
-			return new \WP_REST_Response( [ 'error' => 'Challenge expired or not found.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'Challenge expired or not found.' ), 400 );
 		}
 
-		$stored      = json_decode( $stored_raw, true );
-		$serializer  = WebAuthnHelper::serializer();
+		$stored     = json_decode( $stored_raw, true );
+		$serializer = WebAuthnHelper::serializer();
 
 		/** @var PublicKeyCredentialRequestOptions $request_options */
 		$request_options = $serializer->deserialize(
@@ -140,21 +146,23 @@ final class PasskeyLoginController {
 			/** @var PublicKeyCredential $pkc */
 			$pkc = $serializer->deserialize( $credential_json, PublicKeyCredential::class, 'json' );
 		} catch ( \Throwable $e ) {
-			return new \WP_REST_Response( [ 'error' => 'Invalid assertion payload.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'Invalid assertion payload.' ), 400 );
 		}
 
 		$response = $pkc->response;
 		if ( ! $response instanceof AuthenticatorAssertionResponse ) {
-			return new \WP_REST_Response( [ 'error' => 'Expected an assertion response.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'Expected an assertion response.' ), 400 );
 		}
 
 		// Look up the stored credential by credential ID.
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 		$credential_source = CredentialRepository::find_by_credential_id( $pkc->rawId );
 		if ( ! $credential_source ) {
-			return new \WP_REST_Response( [ 'error' => 'Credential not found.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'Credential not found.' ), 400 );
 		}
 
 		// Determine user handle.
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 		$user_handle = $credential_source->userHandle;
 
 		try {
@@ -167,32 +175,37 @@ final class PasskeyLoginController {
 			);
 		} catch ( \Throwable $e ) {
 			return new \WP_REST_Response(
-				[ 'error' => 'Assertion verification failed: ' . $e->getMessage() ],
+				array( 'error' => 'Assertion verification failed: ' . $e->getMessage() ),
 				400
 			);
 		}
 
 		// Update sign count for clone detection.
 		CredentialRepository::update_counter(
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 			$updated_source->publicKeyCredentialId,
 			$updated_source->counter
 		);
 
 		// Resolve the WP user from the credential's user_handle (which is the hash of user_id).
 		// We need to look up by finding which user matches.
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 		$wp_user_id = $this->resolve_user_id( $updated_source->userHandle );
 		if ( ! $wp_user_id ) {
-			return new \WP_REST_Response( [ 'error' => 'User not found.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'User not found.' ), 400 );
 		}
 
 		// Log the user in.
 		wp_set_auth_cookie( $wp_user_id, true, is_ssl() );
 		do_action( 'wp_login', get_userdata( $wp_user_id )->user_login, get_userdata( $wp_user_id ) );
 
-		return new \WP_REST_Response( [
-			'success'     => true,
-			'redirect_to' => admin_url(),
-		], 200 );
+		return new \WP_REST_Response(
+			array(
+				'success'     => true,
+				'redirect_to' => admin_url(),
+			),
+			200
+		);
 	}
 
 	/**
@@ -206,17 +219,8 @@ final class PasskeyLoginController {
 
 		$table = \EnterpriseAuth\Plugin\DatabaseManager::table_name();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$user_id = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT user_id FROM {$table} WHERE credential_id IN (
-					SELECT credential_id FROM {$table}
-				) LIMIT 1"
-			)
-		);
-
 		// More reliable: iterate known IDs from our table and match handle.
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$user_ids = $wpdb->get_col( "SELECT DISTINCT user_id FROM {$table}" );
 
 		foreach ( $user_ids as $uid ) {

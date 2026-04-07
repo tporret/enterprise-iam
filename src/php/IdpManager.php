@@ -36,8 +36,8 @@ final class IdpManager {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public static function all(): array {
-		$raw = get_option( self::OPTION_KEY, [] );
-		return is_array( $raw ) ? $raw : [];
+		$raw = get_option( self::OPTION_KEY, array() );
+		return is_array( $raw ) ? $raw : array();
 	}
 
 	/**
@@ -66,7 +66,7 @@ final class IdpManager {
 			if ( empty( $idp['enabled'] ) ) {
 				continue;
 			}
-			$domains = array_map( 'strtolower', (array) ( $idp['domain_mapping'] ?? [] ) );
+			$domains = array_map( 'strtolower', (array) ( $idp['domain_mapping'] ?? array() ) );
 			if ( in_array( $domain, $domains, true ) ) {
 				return $idp;
 			}
@@ -105,7 +105,7 @@ final class IdpManager {
 	 * Delete an IdP configuration by id.
 	 */
 	public static function delete( string $id ): bool {
-		$all     = self::all();
+		$all      = self::all();
 		$filtered = array_filter( $all, static fn( array $idp ) => ( $idp['id'] ?? '' ) !== $id );
 
 		if ( count( $filtered ) === count( $all ) ) {
@@ -125,32 +125,32 @@ final class IdpManager {
 	 * @return array<string, mixed>
 	 */
 	public static function sanitize( array $raw ): array {
-		$protocol = in_array( $raw['protocol'] ?? '', [ 'oidc', 'saml' ], true )
+		$protocol = in_array( $raw['protocol'] ?? '', array( 'oidc', 'saml' ), true )
 			? $raw['protocol']
 			: 'oidc';
 
-		$domain_mapping = [];
+		$domain_mapping = array();
 		if ( ! empty( $raw['domain_mapping'] ) && is_array( $raw['domain_mapping'] ) ) {
 			foreach ( $raw['domain_mapping'] as $d ) {
 				$clean = sanitize_text_field( (string) $d );
-				if ( $clean !== '' ) {
+				if ( '' !== $clean ) {
 					$domain_mapping[] = strtolower( $clean );
 				}
 			}
 		}
 
-		$role_mapping = [];
+		$role_mapping = array();
 		if ( ! empty( $raw['role_mapping'] ) && is_array( $raw['role_mapping'] ) ) {
 			foreach ( $raw['role_mapping'] as $group => $role ) {
 				$g = sanitize_text_field( (string) $group );
 				$r = sanitize_text_field( (string) $role );
-				if ( $g !== '' && $r !== '' ) {
+				if ( '' !== $g && '' !== $r ) {
 					$role_mapping[ $g ] = $r;
 				}
 			}
 		}
 
-		return [
+		return array(
 			'id'                     => ! empty( $raw['id'] ) ? sanitize_text_field( $raw['id'] ) : wp_generate_uuid4(),
 			'provider_name'          => sanitize_text_field( $raw['provider_name'] ?? '' ),
 			'protocol'               => $protocol,
@@ -167,6 +167,6 @@ final class IdpManager {
 			'domain_mapping'         => $domain_mapping,
 			'role_mapping'           => $role_mapping,
 			'enabled'                => ! empty( $raw['enabled'] ),
-		];
+		);
 	}
 }

@@ -24,18 +24,26 @@ final class SSOController {
 
 	public function register_routes(): void {
 		// OIDC callback (code + state arrive as query params).
-		register_rest_route( self::NAMESPACE, '/sso/callback', [
-			'methods'             => \WP_REST_Server::READABLE,
-			'callback'            => [ $this, 'handle_oidc_callback' ],
-			'permission_callback' => '__return_true',
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/sso/callback',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'handle_oidc_callback' ),
+				'permission_callback' => '__return_true',
+			)
+		);
 
 		// SAML ACS (POST with SAMLResponse).
-		register_rest_route( self::NAMESPACE, '/sso/acs', [
-			'methods'             => \WP_REST_Server::CREATABLE,
-			'callback'            => [ $this, 'handle_saml_acs' ],
-			'permission_callback' => '__return_true',
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/sso/acs',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'handle_saml_acs' ),
+				'permission_callback' => '__return_true',
+			)
+		);
 	}
 
 	// ── OIDC ────────────────────────────────────────────────────────────────
@@ -104,16 +112,19 @@ final class SSOController {
 			return new \WP_Error( 'sso_error', 'Token endpoint not configured for this IdP.' );
 		}
 
-		$response = wp_remote_post( $token_endpoint, [
-			'body'    => [
-				'grant_type'    => 'authorization_code',
-				'code'          => $code,
-				'redirect_uri'  => rest_url( 'enterprise-auth/v1/sso/callback' ),
-				'client_id'     => $idp['client_id'] ?? '',
-				'client_secret' => $idp['client_secret'] ?? '',
-			],
-			'timeout' => 30,
-		] );
+		$response = wp_remote_post(
+			$token_endpoint,
+			array(
+				'body'    => array(
+					'grant_type'    => 'authorization_code',
+					'code'          => $code,
+					'redirect_uri'  => rest_url( 'enterprise-auth/v1/sso/callback' ),
+					'client_id'     => $idp['client_id'] ?? '',
+					'client_secret' => $idp['client_secret'] ?? '',
+				),
+				'timeout' => 30,
+			)
+		);
 
 		if ( is_wp_error( $response ) ) {
 			return new \WP_Error( 'sso_error', 'Failed to contact token endpoint: ' . $response->get_error_message() );
@@ -180,11 +191,11 @@ final class SSOController {
 			}
 		}
 
-		return [
+		return array(
 			'email'  => sanitize_email( $payload['email'] ),
 			'name'   => sanitize_text_field( $payload['name'] ?? '' ),
-			'groups' => array_map( 'sanitize_text_field', (array) ( $payload['groups'] ?? [] ) ),
-		];
+			'groups' => array_map( 'sanitize_text_field', (array) ( $payload['groups'] ?? array() ) ),
+		);
 	}
 
 	/**
@@ -193,10 +204,13 @@ final class SSOController {
 	 * @return array|\WP_Error
 	 */
 	private function fetch_userinfo( string $endpoint, string $access_token ) {
-		$response = wp_remote_get( $endpoint, [
-			'headers' => [ 'Authorization' => 'Bearer ' . $access_token ],
-			'timeout' => 15,
-		] );
+		$response = wp_remote_get(
+			$endpoint,
+			array(
+				'headers' => array( 'Authorization' => 'Bearer ' . $access_token ),
+				'timeout' => 15,
+			)
+		);
 
 		if ( is_wp_error( $response ) ) {
 			return $response;
@@ -258,14 +272,17 @@ final class SSOController {
 	 */
 	private function extract_saml_claims( array $idp, string $saml_response_b64 ) {
 		try {
+			// SAMLResponse arrives base64-encoded per the binding spec.
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 			$xml = base64_decode( $saml_response_b64, true );
 
-			if ( $xml === false ) {
+			if ( false === $xml ) {
 				return new \WP_Error( 'sso_error', 'Invalid SAML response encoding.' );
 			}
 
 			// Parse the XML using SimpleSAML library.
 			$document = \SimpleSAML\XML\DOMDocumentFactory::fromString( $xml );
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 			$response = \SimpleSAML\SAML2\XML\samlp\Response::fromXML( $document->documentElement );
 
 			$assertions = $response->getAssertions();
@@ -286,12 +303,12 @@ final class SSOController {
 			}
 
 			// Extract claims from attributes.
-			$attributes = [];
+			$attributes = array();
 			foreach ( $assertion->getStatements() as $statement ) {
 				if ( $statement instanceof \SimpleSAML\SAML2\XML\saml\AttributeStatement ) {
 					foreach ( $statement->getAttributes() as $attr ) {
 						$name   = $attr->getName();
-						$values = [];
+						$values = array();
 						foreach ( $attr->getAttributeValues() as $av ) {
 							$values[] = $av->getString();
 						}
@@ -330,18 +347,18 @@ final class SSOController {
 			// Extract groups.
 			$groups = $attributes['http://schemas.xmlsoap.org/claims/Group'][0] ?? null;
 			if ( is_string( $groups ) ) {
-				$groups = [ $groups ];
+				$groups = array( $groups );
 			}
 			$groups = $attributes['http://schemas.xmlsoap.org/claims/Group']
 				?? $attributes['groups']
 				?? $attributes['memberOf']
-				?? [];
+				?? array();
 
-			return [
+			return array(
 				'email'  => sanitize_email( $email ),
 				'name'   => sanitize_text_field( $name ),
 				'groups' => array_map( 'sanitize_text_field', (array) $groups ),
-			];
+			);
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'sso_error', 'SAML verification failed: ' . $e->getMessage() );
 		}
@@ -369,15 +386,17 @@ final class SSOController {
 			$first_name = $name_parts[0] ?? '';
 			$last_name  = $name_parts[1] ?? '';
 
-			$user_id = wp_insert_user( [
-				'user_login'   => $username,
-				'user_email'   => $email,
-				'user_pass'    => $password,
-				'first_name'   => sanitize_text_field( $first_name ),
-				'last_name'    => sanitize_text_field( $last_name ),
-				'display_name' => $claims['name'] ?: $username,
-				'role'         => 'subscriber', // default, overridden below
-			] );
+			$user_id = wp_insert_user(
+				array(
+					'user_login'   => $username,
+					'user_email'   => $email,
+					'user_pass'    => $password,
+					'first_name'   => sanitize_text_field( $first_name ),
+					'last_name'    => sanitize_text_field( $last_name ),
+					'display_name' => '' !== $claims['name'] ? $claims['name'] : $username,
+					'role'         => 'subscriber', // default, overridden below
+				)
+			);
 
 			if ( is_wp_error( $user_id ) ) {
 				return $user_id;
@@ -403,7 +422,7 @@ final class SSOController {
 	 * Map IdP group claims to WordPress roles.
 	 */
 	private function apply_role_mapping( \WP_User $user, array $idp, array $groups ): void {
-		$mapping = $idp['role_mapping'] ?? [];
+		$mapping = $idp['role_mapping'] ?? array();
 
 		if ( empty( $mapping ) || empty( $groups ) ) {
 			return;
@@ -432,7 +451,7 @@ final class SSOController {
 
 		$i = 2;
 		while ( username_exists( $base . $i ) ) {
-			$i++;
+			++$i;
 		}
 
 		return $base . $i;
@@ -448,6 +467,8 @@ final class SSOController {
 		if ( $remainder ) {
 			$input .= str_repeat( '=', 4 - $remainder );
 		}
+		// Decoding base64url is required for JWT/JWS parsing.
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 		return base64_decode( strtr( $input, '-_', '+/' ) );
 	}
 
@@ -455,17 +476,20 @@ final class SSOController {
 	 * Redirect to wp-login.php with an error message.
 	 */
 	private function error_redirect( string $message ): \WP_REST_Response {
-		$url = add_query_arg( [
-			'ea_sso_error' => rawurlencode( $message ),
-		], wp_login_url() );
+		$url = add_query_arg(
+			array(
+				'ea_sso_error' => rawurlencode( $message ),
+			),
+			wp_login_url()
+		);
 
-		return new \WP_REST_Response( null, 302, [ 'Location' => $url ] );
+		return new \WP_REST_Response( null, 302, array( 'Location' => $url ) );
 	}
 
 	/**
 	 * Redirect to the admin dashboard on successful login.
 	 */
 	private function success_redirect(): \WP_REST_Response {
-		return new \WP_REST_Response( null, 302, [ 'Location' => admin_url() ] );
+		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
 	}
 }

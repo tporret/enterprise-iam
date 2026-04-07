@@ -18,10 +18,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class LoginFlow {
 
 	public function init(): void {
-		add_action( 'login_enqueue_scripts', [ $this, 'enqueue_login_assets' ] );
-		add_action( 'login_form', [ $this, 'render_step_ui' ] );
-		add_action( 'login_message', [ $this, 'render_sso_error' ] );
-		add_action( 'login_head', [ $this, 'render_identity_first_css' ] );
+		add_action( 'login_enqueue_scripts', array( $this, 'enqueue_login_assets' ) );
+		add_action( 'login_form', array( $this, 'render_step_ui' ) );
+		add_action( 'login_message', array( $this, 'render_sso_error' ) );
+		add_action( 'login_head', array( $this, 'render_identity_first_css' ) );
 	}
 
 	/**
@@ -33,22 +33,26 @@ final class LoginFlow {
 		wp_enqueue_style(
 			'enterprise-auth-passkey-login',
 			ENTERPRISE_AUTH_URL . 'build/passkey-login.css',
-			[],
+			array(),
 			$version
 		);
 
 		wp_enqueue_script(
 			'enterprise-auth-passkey-login',
 			ENTERPRISE_AUTH_URL . 'build/passkey-login.js',
-			[],
+			array(),
 			$version,
 			true
 		);
 
-		wp_localize_script( 'enterprise-auth-passkey-login', 'eaPasskeyLogin', [
-			'restUrl' => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
-			'nonce'   => wp_create_nonce( 'wp_rest' ),
-		] );
+		wp_localize_script(
+			'enterprise-auth-passkey-login',
+			'eaPasskeyLogin',
+			array(
+				'restUrl' => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
+				'nonce'   => wp_create_nonce( 'wp_rest' ),
+			)
+		);
 	}
 
 	/**
@@ -118,8 +122,10 @@ final class LoginFlow {
 	 * Display SSO error messages returned via query string.
 	 */
 	public function render_sso_error( string $message ): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! empty( $_GET['ea_sso_error'] ) ) {
-			$error = sanitize_text_field( wp_unslash( $_GET['ea_sso_error'] ) );
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$error    = sanitize_text_field( wp_unslash( $_GET['ea_sso_error'] ) );
 			$message .= '<div id="login_error"><strong>SSO Error:</strong> ' . esc_html( $error ) . '</div>';
 		}
 		return $message;

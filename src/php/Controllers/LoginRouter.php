@@ -24,18 +24,22 @@ final class LoginRouter {
 	private const NAMESPACE = 'enterprise-auth/v1';
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, '/route-login', [
-			'methods'             => \WP_REST_Server::CREATABLE,
-			'callback'            => [ $this, 'route' ],
-			'permission_callback' => '__return_true',
-			'args'                => [
-				'email' => [
-					'type'              => 'string',
-					'required'          => true,
-					'sanitize_callback' => 'sanitize_email',
-				],
-			],
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/route-login',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'route' ),
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'email' => array(
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_email',
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -45,7 +49,7 @@ final class LoginRouter {
 		$email = $request->get_param( 'email' );
 
 		if ( ! is_email( $email ) ) {
-			return new \WP_REST_Response( [ 'error' => 'Invalid email address.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'Invalid email address.' ), 400 );
 		}
 
 		$parts  = explode( '@', $email );
@@ -54,37 +58,49 @@ final class LoginRouter {
 		$idp = IdpManager::find_by_domain( $domain );
 
 		if ( ! $idp ) {
-			return new \WP_REST_Response( [
-				'method' => 'local',
-			], 200 );
+			return new \WP_REST_Response(
+				array(
+					'method' => 'local',
+				),
+				200
+			);
 		}
 
 		// Build the SSO redirect URL based on protocol.
 		$redirect_url = $this->build_redirect_url( $idp, $email );
 
-		return new \WP_REST_Response( [
-			'method'        => 'sso',
-			'provider_name' => $idp['provider_name'] ?? 'SSO Provider',
-			'redirect_url'  => $redirect_url,
-		], 200 );
+		return new \WP_REST_Response(
+			array(
+				'method'        => 'sso',
+				'provider_name' => $idp['provider_name'] ?? 'SSO Provider',
+				'redirect_url'  => $redirect_url,
+			),
+			200
+		);
 	}
 
 	/**
 	 * Build the SSO initiation redirect URL.
 	 */
-	private function build_redirect_url( array $idp, string $email ): string {
+	private function build_redirect_url( array $idp, string $_email ): string {
 		if ( ( $idp['protocol'] ?? '' ) === 'oidc' ) {
 			// Route to the dedicated OIDC Login Controller which handles
 			// state/nonce generation and the Authorization Code redirect.
-			return add_query_arg( [
-				'idp_id' => $idp['id'],
-			], rest_url( 'enterprise-auth/v1/oidc/login' ) );
+			return add_query_arg(
+				array(
+					'idp_id' => $idp['id'],
+				),
+				rest_url( 'enterprise-auth/v1/oidc/login' )
+			);
 		}
 
 		// SAML – redirect to our SP-initiated login endpoint which
 		// builds the AuthnRequest via the OneLogin toolkit.
-		return add_query_arg( [
-			'idp_id' => $idp['id'],
-		], rest_url( 'enterprise-auth/v1/saml/login' ) );
+		return add_query_arg(
+			array(
+				'idp_id' => $idp['id'],
+			),
+			rest_url( 'enterprise-auth/v1/saml/login' )
+		);
 	}
 }

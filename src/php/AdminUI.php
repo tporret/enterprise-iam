@@ -16,7 +16,7 @@ final class AdminUI {
 	private const MENU_SLUG = 'enterprise-auth';
 
 	public function init(): void {
-		add_action( 'admin_menu', [ $this, 'register_menu' ] );
+		add_action( 'admin_menu', array( $this, 'register_menu' ) );
 	}
 
 	/**
@@ -28,7 +28,7 @@ final class AdminUI {
 			__( 'Enterprise Auth', 'enterprise-auth' ),
 			'manage_options',
 			self::MENU_SLUG,
-			[ $this, 'render_page' ],
+			array( $this, 'render_page' ),
 			'dashicons-shield-alt',
 			3
 		);
@@ -66,13 +66,17 @@ final class AdminUI {
 		wp_enqueue_style(
 			'enterprise-auth-admin',
 			ENTERPRISE_AUTH_URL . 'build/style-index.css',
-			[],
+			array(),
 			$asset['version']
 		);
 
-		wp_localize_script( 'enterprise-auth-admin', 'enterpriseAuth', [
-			'restUrl' => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
-			'nonce'   => wp_create_nonce( 'wp_rest' ),
-		] );
+		wp_localize_script(
+			'enterprise-auth-admin',
+			'enterpriseAuth',
+			array(
+				'restUrl' => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
+				'nonce'   => wp_create_nonce( 'wp_rest' ),
+			)
+		);
 	}
 }

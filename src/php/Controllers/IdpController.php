@@ -24,24 +24,32 @@ final class IdpController {
 	private const NAMESPACE = 'enterprise-auth/v1';
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, '/idps', [
-			[
-				'methods'             => \WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'list_idps' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			],
-			[
-				'methods'             => \WP_REST_Server::CREATABLE,
-				'callback'            => [ $this, 'save_idp' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			],
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/idps',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'list_idps' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'save_idp' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 
-		register_rest_route( self::NAMESPACE, '/idps/(?P<id>[a-f0-9-]+)', [
-			'methods'             => \WP_REST_Server::DELETABLE,
-			'callback'            => [ $this, 'delete_idp' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/idps/(?P<id>[a-f0-9-]+)',
+			array(
+				'methods'             => \WP_REST_Server::DELETABLE,
+				'callback'            => array( $this, 'delete_idp' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 	}
 
 	public function check_permission(): bool {
@@ -52,10 +60,13 @@ final class IdpController {
 		$idps = IdpManager::all();
 
 		// Strip client_secret from the response for security.
-		$safe = array_map( static function ( array $idp ): array {
-			$idp['client_secret'] = ! empty( $idp['client_secret'] ) ? '••••••••' : '';
-			return $idp;
-		}, $idps );
+		$safe = array_map(
+			static function ( array $idp ): array {
+				$idp['client_secret'] = ! empty( $idp['client_secret'] ) ? '••••••••' : '';
+				return $idp;
+			},
+			$idps
+		);
 
 		return new \WP_REST_Response( array_values( $safe ), 200 );
 	}
@@ -64,14 +75,14 @@ final class IdpController {
 		$raw = $request->get_json_params();
 
 		if ( empty( $raw ) || ! is_array( $raw ) ) {
-			return new \WP_REST_Response( [ 'error' => 'Invalid payload.' ], 400 );
+			return new \WP_REST_Response( array( 'error' => 'Invalid payload.' ), 400 );
 		}
 
 		// If the client_secret is the masked placeholder, preserve the
 		// real secret already stored in the database.
 		if (
 			! empty( $raw['id'] )
-			&& ( ! isset( $raw['client_secret'] ) || $raw['client_secret'] === '••••••••' || $raw['client_secret'] === '' )
+			&& ( ! isset( $raw['client_secret'] ) || '••••••••' === $raw['client_secret'] || '' === $raw['client_secret'] )
 		) {
 			$existing = IdpManager::find( $raw['id'] );
 			if ( $existing ) {
@@ -90,9 +101,9 @@ final class IdpController {
 		$deleted = IdpManager::delete( $id );
 
 		if ( ! $deleted ) {
-			return new \WP_REST_Response( [ 'error' => 'IdP not found.' ], 404 );
+			return new \WP_REST_Response( array( 'error' => 'IdP not found.' ), 404 );
 		}
 
-		return new \WP_REST_Response( [ 'deleted' => true ], 200 );
+		return new \WP_REST_Response( array( 'deleted' => true ), 200 );
 	}
 }

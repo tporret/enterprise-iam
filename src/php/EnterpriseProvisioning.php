@@ -37,17 +37,22 @@ final class EnterpriseProvisioning {
 			$password   = wp_generate_password( 32, true, true );
 			$first_name = sanitize_text_field( $attributes['first_name'] ?? '' );
 			$last_name  = sanitize_text_field( $attributes['last_name'] ?? '' );
-			$display    = trim( "$first_name $last_name" ) ?: $username;
+			$display    = trim( "$first_name $last_name" );
+			if ( '' === $display ) {
+				$display = $username;
+			}
 
-			$user_id = wp_insert_user( [
-				'user_login'   => $username,
-				'user_email'   => $email,
-				'user_pass'    => $password,
-				'first_name'   => $first_name,
-				'last_name'    => $last_name,
-				'display_name' => $display,
-				'role'         => 'subscriber',
-			] );
+			$user_id = wp_insert_user(
+				array(
+					'user_login'   => $username,
+					'user_email'   => $email,
+					'user_pass'    => $password,
+					'first_name'   => $first_name,
+					'last_name'    => $last_name,
+					'display_name' => $display,
+					'role'         => 'subscriber',
+				)
+			);
 
 			if ( is_wp_error( $user_id ) ) {
 				return $user_id;
@@ -58,7 +63,7 @@ final class EnterpriseProvisioning {
 		}
 
 		// Map IdP groups → WP roles.
-		self::apply_role_mapping( $user, $idp, (array) ( $attributes['groups'] ?? [] ) );
+		self::apply_role_mapping( $user, $idp, (array) ( $attributes['groups'] ?? array() ) );
 
 		// Log the user in.
 		wp_set_auth_cookie( $user->ID, true );
@@ -73,7 +78,7 @@ final class EnterpriseProvisioning {
 	 * Priority: exact group match → wildcard "*" mapping → no change.
 	 */
 	private static function apply_role_mapping( \WP_User $user, array $idp, array $groups ): void {
-		$mapping = $idp['role_mapping'] ?? [];
+		$mapping = $idp['role_mapping'] ?? array();
 
 		if ( empty( $mapping ) ) {
 			return;
@@ -108,7 +113,7 @@ final class EnterpriseProvisioning {
 
 		$i = 2;
 		while ( username_exists( $base . $i ) ) {
-			$i++;
+			++$i;
 		}
 
 		return $base . $i;

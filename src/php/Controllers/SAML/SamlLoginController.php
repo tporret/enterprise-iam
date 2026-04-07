@@ -23,18 +23,22 @@ final class SamlLoginController {
 	private const NAMESPACE = 'enterprise-auth/v1';
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, '/saml/login', [
-			'methods'             => \WP_REST_Server::READABLE,
-			'callback'            => [ $this, 'login' ],
-			'permission_callback' => '__return_true',
-			'args'                => [
-				'idp_id' => [
-					'type'              => 'string',
-					'required'          => true,
-					'sanitize_callback' => 'sanitize_text_field',
-				],
-			],
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/saml/login',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'login' ),
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'idp_id' => array(
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -45,11 +49,11 @@ final class SamlLoginController {
 		$idp    = IdpManager::find( $idp_id );
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'saml' ) {
-			return new \WP_REST_Response( [ 'error' => 'SAML IdP not found.' ], 404 );
+			return new \WP_REST_Response( array( 'error' => 'SAML IdP not found.' ), 404 );
 		}
 
 		if ( empty( $idp['enabled'] ) ) {
-			return new \WP_REST_Response( [ 'error' => 'This IdP is currently disabled.' ], 403 );
+			return new \WP_REST_Response( array( 'error' => 'This IdP is currently disabled.' ), 403 );
 		}
 
 		try {
@@ -61,7 +65,7 @@ final class SamlLoginController {
 			// controller can look up the config after the IdP responds.
 			$sso_url = $auth->login(
 				$idp_id,           // returnTo — becomes RelayState (IdP ID)
-				[],                // parameters
+				array(),                // parameters
 				false,             // forceAuthn
 				false,             // isPassive
 				true               // stay — return the redirect URL
@@ -69,15 +73,15 @@ final class SamlLoginController {
 
 			if ( empty( $sso_url ) ) {
 				return new \WP_REST_Response(
-					[ 'error' => 'Could not build SAML AuthnRequest URL.' ],
+					array( 'error' => 'Could not build SAML AuthnRequest URL.' ),
 					500
 				);
 			}
 
-			return new \WP_REST_Response( null, 302, [ 'Location' => $sso_url ] );
+			return new \WP_REST_Response( null, 302, array( 'Location' => $sso_url ) );
 		} catch ( \Throwable $e ) {
 			return new \WP_REST_Response(
-				[ 'error' => 'Failed to initiate SAML login: ' . $e->getMessage() ],
+				array( 'error' => 'Failed to initiate SAML login: ' . $e->getMessage() ),
 				500
 			);
 		}

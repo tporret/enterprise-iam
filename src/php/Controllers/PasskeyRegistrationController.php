@@ -26,24 +26,28 @@ use Webauthn\AuthenticatorSelectionCriteria;
  */
 final class PasskeyRegistrationController {
 
-	private const NAMESPACE   = 'enterprise-auth/v1';
-	private const ROUTE       = '/passkeys/register';
-	private const TRANSIENT   = 'ea_webauthn_reg_';
+	private const NAMESPACE     = 'enterprise-auth/v1';
+	private const ROUTE         = '/passkeys/register';
+	private const TRANSIENT     = 'ea_webauthn_reg_';
 	private const CHALLENGE_TTL = 60; // seconds
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, self::ROUTE, [
-			[
-				'methods'             => \WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_creation_options' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			],
-			[
-				'methods'             => \WP_REST_Server::CREATABLE,
-				'callback'            => [ $this, 'verify_attestation' ],
-				'permission_callback' => [ $this, 'check_permission' ],
-			],
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			self::ROUTE,
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_creation_options' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'verify_attestation' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -56,7 +60,7 @@ final class PasskeyRegistrationController {
 	/**
 	 * GET – generate the PublicKeyCredentialCreationOptions.
 	 */
-	public function get_creation_options( \WP_REST_Request $request ): \WP_REST_Response {
+	public function get_creation_options( \WP_REST_Request $_request ): \WP_REST_Response {
 		$user    = wp_get_current_user();
 		$user_id = (int) $user->ID;
 
@@ -64,22 +68,26 @@ final class PasskeyRegistrationController {
 		$challenge = WebAuthnHelper::generate_challenge();
 
 		// Build the user entity; the id is a stable opaque handle.
-		$user_handle = hash( 'sha256', (string) $user_id, true );
+		$user_handle  = hash( 'sha256', (string) $user_id, true );
+		$display_name = $user->display_name;
+		if ( '' === $display_name ) {
+			$display_name = $user->user_login;
+		}
 		$user_entity = PublicKeyCredentialUserEntity::create(
 			name: $user->user_login,
 			id: $user_handle,
-			displayName: $user->display_name ?: $user->user_login,
+			displayName: $display_name,
 		);
 
 		// Algorithms: ES256 (-7) and RS256 (-257).
-		$pub_key_params = [
+		$pub_key_params = array(
 			PublicKeyCredentialParameters::create( 'public-key', -7 ),
 			PublicKeyCredentialParameters::create( 'public-key', -257 ),
-		];
+		);
 
 		// Exclude already-registered credentials to prevent duplicates.
-		$existing    = CredentialRepository::find_all_for_user( $user_id );
-		$exclude     = array_map(
+		$existing = CredentialRepository::find_all_for_user( $user_id );
+		$exclude  = array_map(
 			static fn( $src ) => $src->getPublicKeyCredentialDescriptor(),
 			$existing
 		);
@@ -126,7 +134,7 @@ final class PasskeyRegistrationController {
 
 		if ( ! $options_json ) {
 			return new \WP_REST_Response(
-				[ 'error' => 'Challenge expired or not found. Please try again.' ],
+				array( 'error' => 'Challenge expired or not found. Please try again.' ),
 				400
 			);
 		}
@@ -148,7 +156,7 @@ final class PasskeyRegistrationController {
 			$pkc = $serializer->deserialize( $body, PublicKeyCredential::class, 'json' );
 		} catch ( \Throwable $e ) {
 			return new \WP_REST_Response(
-				[ 'error' => 'Invalid attestation payload.' ],
+				array( 'error' => 'Invalid attestation payload.' ),
 				400
 			);
 		}
@@ -156,7 +164,7 @@ final class PasskeyRegistrationController {
 		$response = $pkc->response;
 		if ( ! $response instanceof AuthenticatorAttestationResponse ) {
 			return new \WP_REST_Response(
-				[ 'error' => 'Expected an attestation response.' ],
+				array( 'error' => 'Expected an attestation response.' ),
 				400
 			);
 		}
@@ -169,7 +177,7 @@ final class PasskeyRegistrationController {
 			);
 		} catch ( \Throwable $e ) {
 			return new \WP_REST_Response(
-				[ 'error' => 'Attestation verification failed: ' . $e->getMessage() ],
+				array( 'error' => 'Attestation verification failed: ' . $e->getMessage() ),
 				400
 			);
 		}
@@ -177,6 +185,12 @@ final class PasskeyRegistrationController {
 		// Persist the credential.
 		CredentialRepository::save( $credential_source, $user_id );
 
-		return new \WP_REST_Response( [ 'success' => true, 'message' => 'Passkey registered.' ], 200 );
+		return new \WP_REST_Response(
+			array(
+				'success' => true,
+				'message' => 'Passkey registered.',
+			),
+			200
+		);
 	}
 }

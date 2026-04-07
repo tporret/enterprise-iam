@@ -25,9 +25,13 @@ final class WebAuthnHelper {
 	 * Get the Relying Party entity derived from the current host.
 	 */
 	public static function rp_entity(): PublicKeyCredentialRpEntity {
-		$host = self::rp_id();
+		$host      = self::rp_id();
+		$site_name = get_bloginfo( 'name' );
+		if ( '' === $site_name ) {
+			$site_name = 'WordPress';
+		}
 		return PublicKeyCredentialRpEntity::create(
-			name: get_bloginfo( 'name' ) ?: 'WordPress',
+			name: $site_name,
 			id: $host,
 		);
 	}
@@ -36,16 +40,23 @@ final class WebAuthnHelper {
 	 * Relying Party ID – the effective domain for WebAuthn.
 	 */
 	public static function rp_id(): string {
-		return wp_parse_url( home_url(), PHP_URL_HOST ) ?: 'localhost';
+		$host = wp_parse_url( home_url(), PHP_URL_HOST );
+		if ( empty( $host ) ) {
+			return 'localhost';
+		}
+
+		return $host;
 	}
 
 	/**
 	 * Build the AttestationStatementSupportManager.
 	 */
 	public static function attestation_support_manager(): AttestationStatementSupportManager {
-		return new AttestationStatementSupportManager( [
-			new NoneAttestationStatementSupport(),
-		] );
+		return new AttestationStatementSupportManager(
+			array(
+				new NoneAttestationStatementSupport(),
+			)
+		);
 	}
 
 	/**
@@ -61,7 +72,7 @@ final class WebAuthnHelper {
 	 */
 	public static function ceremony_factory(): CeremonyStepManagerFactory {
 		$factory = new CeremonyStepManagerFactory();
-		$factory->setAllowedOrigins( [ home_url() ] );
+		$factory->setAllowedOrigins( array( home_url() ) );
 		return $factory;
 	}
 

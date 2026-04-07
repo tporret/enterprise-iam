@@ -21,25 +21,29 @@ final class SamlMetadataController {
 	private const NAMESPACE = 'enterprise-auth/v1';
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, '/saml/metadata', [
-			'methods'             => \WP_REST_Server::READABLE,
-			'callback'            => [ $this, 'metadata' ],
-			'permission_callback' => '__return_true',
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/saml/metadata',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'metadata' ),
+				'permission_callback' => '__return_true',
+			)
+		);
 	}
 
 	/**
 	 * Generate and return SP metadata XML.
 	 */
-	public function metadata( \WP_REST_Request $request ): \WP_REST_Response {
+	public function metadata( \WP_REST_Request $_request ): \WP_REST_Response {
 		try {
-			$settings   = new \OneLogin\Saml2\Settings( SamlSettingsFactory::build(), true );
-			$metadata   = $settings->getSPMetadata();
-			$errors     = $settings->validateMetadata( $metadata );
+			$settings = new \OneLogin\Saml2\Settings( SamlSettingsFactory::build(), true );
+			$metadata = $settings->getSPMetadata();
+			$errors   = $settings->validateMetadata( $metadata );
 
 			if ( ! empty( $errors ) ) {
 				return new \WP_REST_Response(
-					[ 'error' => 'Metadata validation failed: ' . implode( ', ', $errors ) ],
+					array( 'error' => 'Metadata validation failed: ' . implode( ', ', $errors ) ),
 					500
 				);
 			}
@@ -50,15 +54,18 @@ final class SamlMetadataController {
 
 			// We need to output the XML directly and exit since WP REST framework
 			// always JSON-encodes the response body.
-			add_filter( 'rest_pre_serve_request', static function ( $served ) use ( $metadata ) {
-				echo $metadata; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-				return true;
-			} );
+			add_filter(
+				'rest_pre_serve_request',
+				static function ( $_served ) use ( $metadata ) {
+					echo $metadata; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+					return true;
+				}
+			);
 
 			return $response;
 		} catch ( \Throwable $e ) {
 			return new \WP_REST_Response(
-				[ 'error' => 'Failed to generate SP metadata: ' . $e->getMessage() ],
+				array( 'error' => 'Failed to generate SP metadata: ' . $e->getMessage() ),
 				500
 			);
 		}

@@ -25,11 +25,15 @@ final class SamlAcsController {
 	private const NAMESPACE = 'enterprise-auth/v1';
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, '/saml/acs', [
-			'methods'             => \WP_REST_Server::CREATABLE,
-			'callback'            => [ $this, 'consume' ],
-			'permission_callback' => '__return_true',
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/saml/acs',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'consume' ),
+				'permission_callback' => '__return_true',
+			)
+		);
 	}
 
 	/**
@@ -127,31 +131,34 @@ final class SamlAcsController {
 		$groups = $attrs['http://schemas.xmlsoap.org/claims/Group']
 			?? $attrs['groups']
 			?? $attrs['memberOf']
-			?? [];
+			?? array();
 
-		return [
+		return array(
 			'email'      => $email,
 			'first_name' => $first_name,
 			'last_name'  => $last_name,
 			'groups'     => (array) $groups,
-		];
+		);
 	}
 
 	/**
 	 * Redirect to wp-login.php with an error message.
 	 */
 	private function error_redirect( string $message ): \WP_REST_Response {
-		$url = add_query_arg( [
-			'ea_sso_error' => rawurlencode( $message ),
-		], wp_login_url() );
+		$url = add_query_arg(
+			array(
+				'ea_sso_error' => rawurlencode( $message ),
+			),
+			wp_login_url()
+		);
 
-		return new \WP_REST_Response( null, 302, [ 'Location' => $url ] );
+		return new \WP_REST_Response( null, 302, array( 'Location' => $url ) );
 	}
 
 	/**
 	 * Redirect to wp-admin on successful login.
 	 */
 	private function success_redirect(): \WP_REST_Response {
-		return new \WP_REST_Response( null, 302, [ 'Location' => admin_url() ] );
+		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
 	}
 }

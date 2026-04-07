@@ -24,11 +24,14 @@ final class CredentialRepository {
 	public static function find_by_credential_id( string $credential_id_binary ): ?PublicKeyCredentialSource {
 		global $wpdb;
 
-		$b64  = base64_encode( $credential_id_binary );
+		// WebAuthn stores credential IDs as binary; DB stores base64 text.
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		$b64   = base64_encode( $credential_id_binary );
 		$table = DatabaseManager::table_name();
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$row = $wpdb->get_row(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare( "SELECT * FROM {$table} WHERE credential_id = %s LIMIT 1", $b64 ),
 			ARRAY_A
 		);
@@ -52,15 +55,16 @@ final class CredentialRepository {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->prepare( "SELECT * FROM {$table} WHERE user_id = %d", $user_id ),
 			ARRAY_A
 		);
 
 		if ( ! $rows ) {
-			return [];
+			return array();
 		}
 
-		return array_map( [ self::class, 'row_to_source' ], $rows );
+		return array_map( array( self::class, 'row_to_source' ), $rows );
 	}
 
 	/**
@@ -71,17 +75,25 @@ final class CredentialRepository {
 
 		$table = DatabaseManager::table_name();
 
-		$wpdb->insert( $table, [
-			'user_id'          => $user_id,
-			'credential_id'    => base64_encode( $source->publicKeyCredentialId ),
-			'public_key'       => base64_encode( $source->credentialPublicKey ),
-			'sign_count'       => $source->counter,
-			'transports'       => wp_json_encode( $source->transports ),
-			'attestation_type' => $source->attestationType,
-			'trust_path'       => wp_json_encode( [] ),
-			'aaguid'           => $source->aaguid->toRfc4122(),
-			'created_at'       => current_time( 'mysql', true ),
-		] );
+		// Accessing third-party object properties keeps their upstream names.
+		// phpcs:disable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+		$wpdb->insert(
+			$table,
+			array(
+				'user_id'          => $user_id,
+				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				'credential_id'    => base64_encode( $source->publicKeyCredentialId ),
+				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				'public_key'       => base64_encode( $source->credentialPublicKey ),
+				'sign_count'       => $source->counter,
+				'transports'       => wp_json_encode( $source->transports ),
+				'attestation_type' => $source->attestationType,
+				'trust_path'       => wp_json_encode( array() ),
+				'aaguid'           => $source->aaguid->toRfc4122(),
+				'created_at'       => current_time( 'mysql', true ),
+			)
+		);
+		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 	}
 
 	/**
@@ -94,10 +106,11 @@ final class CredentialRepository {
 
 		$wpdb->update(
 			$table,
-			[ 'sign_count' => $new_count ],
-			[ 'credential_id' => base64_encode( $credential_id_binary ) ],
-			[ '%d' ],
-			[ '%s' ]
+			array( 'sign_count' => $new_count ),
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+			array( 'credential_id' => base64_encode( $credential_id_binary ) ),
+			array( '%d' ),
+			array( '%s' )
 		);
 	}
 
@@ -107,7 +120,7 @@ final class CredentialRepository {
 	private static function row_to_source( array $row ): PublicKeyCredentialSource {
 		$transports = json_decode( $row['transports'] ?? '[]', true );
 		if ( ! is_array( $transports ) ) {
-			$transports = [];
+			$transports = array();
 		}
 
 		$aaguid = $row['aaguid']
@@ -115,12 +128,14 @@ final class CredentialRepository {
 			: Uuid::fromString( '00000000-0000-0000-0000-000000000000' );
 
 		return PublicKeyCredentialSource::create(
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 			base64_decode( $row['credential_id'] ),
 			'public-key',
 			$transports,
 			$row['attestation_type'] ?? 'none',
 			new EmptyTrustPath(),
 			$aaguid,
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 			base64_decode( $row['public_key'] ),
 			(string) $row['user_id'],
 			(int) $row['sign_count'],

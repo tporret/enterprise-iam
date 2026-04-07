@@ -26,11 +26,15 @@ final class OidcCallbackController {
 	private const NAMESPACE = 'enterprise-auth/v1';
 
 	public function register_routes(): void {
-		register_rest_route( self::NAMESPACE, '/oidc/callback', [
-			'methods'             => \WP_REST_Server::READABLE,
-			'callback'            => [ $this, 'callback' ],
-			'permission_callback' => '__return_true',
-		] );
+		register_rest_route(
+			self::NAMESPACE,
+			'/oidc/callback',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'callback' ),
+				'permission_callback' => '__return_true',
+			)
+		);
 	}
 
 	/**
@@ -43,7 +47,10 @@ final class OidcCallbackController {
 
 		// Handle IdP-side errors (e.g. user cancelled consent).
 		if ( $error ) {
-			$desc = $request->get_param( 'error_description' ) ?: $error;
+			$desc = $request->get_param( 'error_description' );
+			if ( empty( $desc ) ) {
+				$desc = $error;
+			}
 			return $this->error_redirect( 'IdP error: ' . sanitize_text_field( $desc ) );
 		}
 
@@ -83,12 +90,14 @@ final class OidcCallbackController {
 			// Configure explicit provider endpoints if available so the
 			// library doesn't need to perform discovery.
 			if ( ! empty( $idp['authorization_endpoint'] ) ) {
-				$oidc->providerConfigParam( [
-					'authorization_endpoint' => $idp['authorization_endpoint'],
-					'token_endpoint'         => $idp['token_endpoint'] ?? '',
-					'userinfo_endpoint'      => $idp['userinfo_endpoint'] ?? '',
-					'jwks_uri'               => $idp['jwks_uri'] ?? '',
-				] );
+				$oidc->providerConfigParam(
+					array(
+						'authorization_endpoint' => $idp['authorization_endpoint'],
+						'token_endpoint'         => $idp['token_endpoint'] ?? '',
+						'userinfo_endpoint'      => $idp['userinfo_endpoint'] ?? '',
+						'jwks_uri'               => $idp['jwks_uri'] ?? '',
+					)
+				);
 			}
 
 			// Inject code and state into the superglobals the library reads.
@@ -104,18 +113,26 @@ final class OidcCallbackController {
 			$oidc->authenticate();
 
 			// ── Extract user claims ─────────────────────────────────────
-			$email      = $oidc->getVerifiedClaims( 'email' );
-			$given_name = $oidc->getVerifiedClaims( 'given_name' ) ?: '';
-			$family_name = $oidc->getVerifiedClaims( 'family_name' ) ?: '';
-			$groups     = $oidc->getVerifiedClaims( 'groups' );
+			$email       = $oidc->getVerifiedClaims( 'email' );
+			$given_name  = $oidc->getVerifiedClaims( 'given_name' );
+			$family_name = $oidc->getVerifiedClaims( 'family_name' );
+			$given_name  = is_string( $given_name ) ? $given_name : '';
+			$family_name = is_string( $family_name ) ? $family_name : '';
+			$groups      = $oidc->getVerifiedClaims( 'groups' );
 
 			// Fallback: try requestUserInfo if email not in ID token.
 			if ( empty( $email ) ) {
 				$userinfo = $oidc->requestUserInfo();
-				$email      = $userinfo->email ?? '';
-				$given_name = $given_name ?: ( $userinfo->given_name ?? '' );
-				$family_name = $family_name ?: ( $userinfo->family_name ?? '' );
-				$groups     = $groups ?: ( $userinfo->groups ?? [] );
+				$email    = $userinfo->email ?? '';
+				if ( '' === $given_name ) {
+					$given_name = (string) ( $userinfo->given_name ?? '' );
+				}
+				if ( '' === $family_name ) {
+					$family_name = (string) ( $userinfo->family_name ?? '' );
+				}
+				if ( empty( $groups ) ) {
+					$groups = $userinfo->groups ?? array();
+				}
 			}
 
 			if ( empty( $email ) || ! is_email( $email ) ) {
@@ -124,15 +141,15 @@ final class OidcCallbackController {
 
 			// Normalize groups to array.
 			if ( ! is_array( $groups ) ) {
-				$groups = $groups ? [ $groups ] : [];
+				$groups = $groups ? array( $groups ) : array();
 			}
 
-			$attributes = [
+			$attributes = array(
 				'email'      => sanitize_email( $email ),
 				'first_name' => sanitize_text_field( (string) $given_name ),
 				'last_name'  => sanitize_text_field( (string) $family_name ),
 				'groups'     => array_map( 'sanitize_text_field', $groups ),
-			];
+			);
 
 			// ── JIT provisioning and login ──────────────────────────────
 			$result = EnterpriseProvisioning::provision_and_login( $idp, $attributes );
@@ -151,17 +168,20 @@ final class OidcCallbackController {
 	 * Redirect to wp-login.php with an error message.
 	 */
 	private function error_redirect( string $message ): \WP_REST_Response {
-		$url = add_query_arg( [
-			'ea_sso_error' => rawurlencode( $message ),
-		], wp_login_url() );
+		$url = add_query_arg(
+			array(
+				'ea_sso_error' => rawurlencode( $message ),
+			),
+			wp_login_url()
+		);
 
-		return new \WP_REST_Response( null, 302, [ 'Location' => $url ] );
+		return new \WP_REST_Response( null, 302, array( 'Location' => $url ) );
 	}
 
 	/**
 	 * Redirect to the admin dashboard on successful login.
 	 */
 	private function success_redirect(): \WP_REST_Response {
-		return new \WP_REST_Response( null, 302, [ 'Location' => admin_url() ] );
+		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
 	}
 }
