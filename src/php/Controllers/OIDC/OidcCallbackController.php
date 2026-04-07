@@ -33,6 +33,28 @@ final class OidcCallbackController {
 				'methods'             => \WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'callback' ),
 				'permission_callback' => '__return_true',
+				'args'                => array(
+					'code'              => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'state'             => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'error'             => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'error_description' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
 			)
 		);
 	}
@@ -41,17 +63,27 @@ final class OidcCallbackController {
 	 * Handle the OIDC authorization code callback.
 	 */
 	public function callback( \WP_REST_Request $request ): \WP_REST_Response {
-		$code  = $request->get_param( 'code' );
-		$state = $request->get_param( 'state' );
-		$error = $request->get_param( 'error' );
+		$code  = $this->get_callback_param( $request, 'code' );
+		$state = $this->get_callback_param( $request, 'state' );
+		$error = $this->get_callback_param( $request, 'error' );
 
 		// Handle IdP-side errors (e.g. user cancelled consent).
-		if ( $error ) {
-			$desc = $request->get_param( 'error_description' );
-			if ( empty( $desc ) ) {
-				$desc = $error;
+		if ( '' !== $error ) {
+			if ( '' !== $state ) {
+				$state_data = $this->consume_state( $state );
+				if ( null === $state_data ) {
+					return $this->error_redirect( 'Invalid or expired OIDC state. Please try again.' );
+				}
 			}
-			return $this->error_redirect( 'IdP error: ' . sanitize_text_field( $desc ) );
+
+			$desc = $this->get_callback_param( $request, 'error_description' );
+
+			$message = 'OIDC provider error ' . sanitize_text_field( $error );
+			if ( '' !== $desc ) {
+				$message .= ': ' . sanitize_text_field( $desc );
+			}
+
+			return $this->error_redirect( $message );
 		}
 
 		if ( empty( $code ) || empty( $state ) ) {
@@ -59,18 +91,14 @@ final class OidcCallbackController {
 		}
 
 		// ── Validate state (CSRF protection) ────────────────────────────
-		$transient_key = 'ea_oidc_state_' . sanitize_text_field( $state );
-		$state_raw     = get_transient( $transient_key );
-		delete_transient( $transient_key ); // one-time use
-
-		if ( ! $state_raw ) {
+		$state_data = $this->consume_state( $state );
+		if ( null === $state_data ) {
 			return $this->error_redirect( 'Invalid or expired OIDC state. Please try again.' );
 		}
 
-		$state_data = json_decode( $state_raw, true );
-		$idp_id     = $state_data['idp_id'] ?? '';
-		$nonce      = $state_data['nonce'] ?? '';
-		$idp        = IdpManager::find( $idp_id );
+		$idp_id = $state_data['idp_id'] ?? '';
+		$nonce  = $state_data['nonce'] ?? '';
+		$idp    = IdpManager::find( $idp_id );
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'oidc' ) {
 			return $this->error_redirect( 'OIDC Identity Provider not found.' );
@@ -183,5 +211,55 @@ final class OidcCallbackController {
 	 */
 	private function success_redirect(): \WP_REST_Response {
 		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
+	}
+
+	/**
+	 * Validate and consume OIDC state transient (one-time use).
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function consume_state( string $state ): ?array {
+		if ( '' === $state ) {
+			return null;
+		}
+
+		$transient_key = 'ea_oidc_state_' . sanitize_text_field( $state );
+		$state_raw     = get_transient( $transient_key );
+		delete_transient( $transient_key );
+
+		if ( ! $state_raw ) {
+			return null;
+		}
+
+		$state_data = json_decode( (string) $state_raw, true );
+		if ( ! is_array( $state_data ) ) {
+			return null;
+		}
+
+		return $state_data;
+	}
+
+	/**
+	 * Resolve callback parameters from REST params first, then raw query string.
+	 */
+	private function get_callback_param( \WP_REST_Request $request, string $key ): string {
+		$value = (string) $request->get_param( $key );
+		if ( '' !== $value ) {
+			return $value;
+		}
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,WordPress.Security.ValidatedSanitizedInput.MissingUnslash
+		$query_string = $_SERVER['QUERY_STRING'] ?? '';
+		if ( '' === $query_string ) {
+			return '';
+		}
+
+		$parsed_query = array();
+		parse_str( $query_string, $parsed_query );
+		if ( empty( $parsed_query[ $key ] ) ) {
+			return '';
+		}
+
+		return sanitize_text_field( (string) $parsed_query[ $key ] );
 	}
 }
