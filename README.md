@@ -50,6 +50,30 @@ For watch mode during UI development:
 npm run start
 ```
 
+## Static Analysis
+
+PHPCS with WordPress Coding Standards (WPCS) is configured via `phpcs.xml.dist`.
+
+```bash
+composer lint        # Run PHPCS static analysis
+composer lint:fix    # Run PHPCBF to auto-fix style issues
+```
+
+If your local PHP installation lacks `dom`, `simplexml`, or related XML extensions (common on macOS/Linux without a full PHP build), run the tools inside the Docker container instead:
+
+```bash
+docker exec wordpress sh -lc \
+  'cd /var/www/html/wp-content/plugins/enterprise-iam && php vendor/bin/phpcs'
+```
+
+> **Note:** If you recreate the Docker container, re-register WPCS once with:
+> ```bash
+> docker exec wordpress sh -lc \
+>   'cd /var/www/html/wp-content/plugins/enterprise-iam && php vendor/bin/phpcs \
+>   --config-set installed_paths \
+>   vendor/wp-coding-standards/wpcs,vendor/phpcsstandards/phpcsextra,vendor/phpcsstandards/phpcsutils'
+> ```
+
 ## Configuration Overview
 
 ### Passkeys

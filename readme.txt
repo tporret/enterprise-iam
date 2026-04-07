@@ -69,6 +69,11 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 
 == Changelog ==
 
+= 1.0.1 =
+* Added PHPCS/WPCS static analysis tooling (`composer lint`, `composer lint:fix`)
+* Hardened OIDC callback: provider `error` parameter is now surfaced as a user-readable redirect message
+* Fixed SAML admin tab incorrectly listing OIDC identity providers
+
 = 1.0.0 =
 * Initial public release
 * Passkey registration and login (WebAuthn)
