@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.1.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,6 +26,11 @@ Key features:
 * Configurable JIT role ceiling — prevents SSO from granting more than a capped role
 * Break-glass admin isolation — SSO never targets administrator accounts
 * Strict account binding using immutable IdP UID (OIDC `sub` / SAML NameID)
+* SCIM 2.0 user provisioning and deprovisioning with Bearer token auth
+* SCIM 2.0 read operations (`GET /Users`, `GET /Users/{id}`, `GET /Groups`) for Okta/Azure AD/MidPoint connector validation
+* SCIM group-to-role entitlement mapping using the existing role mapping engine
+* SCIM suspension blocks all login methods (password, passkey, SSO)
+* SCIM Provisioning admin tab to view SCIM Base URL and generate one-time tokens
 * Correct local vs SSO routing — local accounts on SSO domains always reach the password form
 * Security hardening controls for WordPress auth behaviour
 * React-based admin configuration UI
@@ -41,6 +46,7 @@ Key features:
    * Passkeys
    * SAML providers
    * OIDC providers
+   * SCIM Provisioning (Base URL + token generation)
    * Domain mappings
    * Role mappings
 
@@ -80,12 +86,34 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 * OIDC nonce validation is handled through the OIDC client flow.
 * SAML assertions are validated by the SAML toolkit.
 * WebAuthn challenges are short-lived and verified server-side.
-* Break-glass admin isolation: user ID 1 and all administrator accounts are blocked from SSO login.
+* Break-glass admin isolation: user ID 1 and all administrator accounts are blocked from SSO login and SCIM modification.
 * Strict account binding: after first login, users are matched by immutable IdP UID (`sub` / NameID), not email. A mismatch blocks the login.
-* Role ceiling: SSO provisioning can never assign a role above the configured ceiling, regardless of IdP payload.
+* Role ceiling: SSO and SCIM provisioning can never assign a role above the configured ceiling, regardless of IdP payload.
+* SCIM Bearer token authentication: bcrypt-hashed token verification on all SCIM endpoints.
+* SCIM one-time token disclosure: plaintext tokens are shown once at generation and never stored server-side.
+* SCIM rate limiting: 300 requests/minute to prevent runaway IdP syncs.
+* SCIM suspension login block: deprovisioned users (`active: false`) are blocked from all login methods.
 * Local account protection: local accounts on SSO-mapped domains are never redirected to an IdP.
 
 == Changelog ==
+
+= 1.3.0 =
+* Feature: SCIM read operations — GET /scim/v2/Users returns RFC 7644 ListResponse with pagination (`startIndex`, `count`) and basic `userName eq "..."` filtering
+* Feature: SCIM read operations — GET /scim/v2/Users/{id} returns a single SCIM User resource with 404 handling
+* Feature: SCIM read operations — GET /scim/v2/Groups returns RFC 7644 ListResponse for available groups (WordPress roles)
+* Feature: SCIM admin UI — new SCIM Provisioning tab shows absolute SCIM Base URL for IdP configuration
+* Feature: SCIM admin UI — Generate New SCIM Token action via POST /enterprise-auth/v1/settings/scim-token
+* Security: SCIM token plaintext is returned strictly once; only bcrypt hash is stored in wp_options (`enterprise_iam_scim_token`)
+
+= 1.2.0 =
+* Feature: SCIM 2.0 user provisioning — POST /scim/v2/Users creates WordPress accounts with externalId binding and conflict detection (409)
+* Feature: SCIM 2.0 user update — PUT /scim/v2/Users/{id} replaces user attributes with admin protection (403)
+* Feature: SCIM 2.0 deprovisioning — PATCH /scim/v2/Users/{id} with `active: false` suspends the user (removes roles, sets `is_scim_suspended` meta); supports both standard and Azure AD PatchOp formats
+* Feature: SCIM 2.0 group entitlement mapping — POST and PATCH /scim/v2/Groups assigns roles to members via the existing role mapping engine with role ceiling enforcement
+* Feature: SCIM Bearer token authentication — bcrypt-hashed token stored in wp_options, verified on every SCIM request
+* Feature: SCIM rate limiting — 300 requests/minute sliding window using WordPress transients (HTTP 429 on exceeded)
+* Security: Suspended users are blocked from all login methods (password, passkey, SSO) with "Account suspended by Identity Provider" error
+* Security: Administrator accounts (user ID 1 and administrator role) are protected from all SCIM modifications
 
 = 1.1.0 =
 * Security: Break-glass admin isolation — SSO login blocked for user ID 1 and all administrator accounts

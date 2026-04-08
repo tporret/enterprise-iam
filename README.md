@@ -13,6 +13,8 @@ It combines:
 - Break-glass admin isolation
 - Immutable IdP UID account binding
 - Configurable JIT role ceiling
+- SCIM 2.0 user provisioning and deprovisioning
+- SCIM group-to-role entitlement mapping
 
 ## Highlights
 
@@ -21,6 +23,7 @@ It combines:
 - SAML metadata endpoint and ACS flow
 - OIDC authorization and callback flow
 - Unified provisioning engine for SAML and OIDC
+- SCIM 2.0 endpoint with Bearer token auth and rate limiting
 - React admin UI for provider management
 - Break-glass admin isolation — SSO cannot target administrator accounts
 - Strict account binding via immutable IdP UID (OIDC `sub` / SAML NameID)
@@ -142,6 +145,54 @@ On successful SSO authentication, the plugin applies the following steps in orde
 
 The domain router (`/route-login`) returns `local` for any WordPress account that has no SSO provider binding, even if the email domain is mapped to an IdP. This ensures break-glass admin accounts and other intentionally-local accounts on SSO domains always reach the password/passkey form.
 
+## SCIM 2.0 Provisioning
+
+The plugin exposes a SCIM 2.0 (RFC 7643/7644) endpoint for automated user lifecycle management from enterprise identity providers.
+
+### Authentication
+
+All SCIM endpoints require a `Authorization: Bearer <token>` header. The token's bcrypt hash is stored in `wp_options` under `enterprise_iam_scim_token`.
+
+### SCIM Admin UI
+
+The admin app now includes a **SCIM Provisioning** tab where administrators can:
+
+- View the absolute SCIM base URL to provide to the IdP
+- Generate a new SCIM token from the UI
+- Copy the plaintext token exactly once (never retrievable later)
+
+Token generation uses `POST /wp-json/enterprise-auth/v1/settings/scim-token` and stores only a bcrypt hash server-side.
+
+### Rate Limiting
+
+SCIM endpoints enforce a 300 requests/minute rate limit using WordPress transients. Exceeding the limit returns HTTP 429.
+
+### User Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/scim/v2/Users` | List users as a SCIM ListResponse. Supports `startIndex`, `count`, and basic `filter` (`userName eq "..."`) for connector validation/reconciliation. |
+| `POST` | `/scim/v2/Users` | Create a new user. Maps `userName` → email, `externalId` → immutable SCIM binding, `name` → first/last name. Returns 201 or 409 on conflict. |
+| `GET` | `/scim/v2/Users/{id}` | Fetch a single user by SCIM/WP user ID. Returns 404 when missing. |
+| `PUT` | `/scim/v2/Users/{id}` | Full replace of a user's attributes. |
+| `PATCH` | `/scim/v2/Users/{id}` | Partial update. Supports `active: false` to suspend (remove roles, set `is_scim_suspended` meta) and `active: true` to reactivate. Handles both standard and Azure AD PatchOp formats. |
+
+Administrator accounts (user ID 1 and `administrator` role) are protected from SCIM modifications (HTTP 403).
+
+### Group Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/scim/v2/Groups` | List groups as a SCIM ListResponse (WordPress roles are exposed as SCIM Groups). |
+| `POST` | `/scim/v2/Groups` | Create a group. The `displayName` is matched against the existing role mapping engine and applied to all `members`. |
+| `PATCH` | `/scim/v2/Groups/{id}` | Update group membership. Supports `add`/`replace` operations on the `members` path. |
+
+Group role assignment uses the same mapping engine as SAML/OIDC (exact match → `*` wildcard fallback), respecting the configured Role Ceiling.
+
+### Suspension & Login Block
+
+When an IdP sends `PATCH` with `active: false`, the user's roles are removed and an `is_scim_suspended` meta flag is set. Suspended users are blocked from all login methods (password, passkey, SSO) with the message "Account suspended by Identity Provider."
+
 ## Main Endpoints
 
 - `POST /wp-json/enterprise-auth/v1/route-login`
@@ -152,16 +203,25 @@ The domain router (`/route-login`) returns `local` for any WordPress account tha
 - `GET /wp-json/enterprise-auth/v1/oidc/callback`
 - `GET|POST /wp-json/enterprise-auth/v1/passkeys/register`
 - `GET|POST /wp-json/enterprise-auth/v1/passkeys/login`
+- `POST /wp-json/enterprise-auth/v1/settings/scim-token`
+- `GET|POST /wp-json/enterprise-auth/v1/scim/v2/Users`
+- `GET|PUT|PATCH /wp-json/enterprise-auth/v1/scim/v2/Users/{id}`
+- `GET|POST /wp-json/enterprise-auth/v1/scim/v2/Groups`
+- `PATCH /wp-json/enterprise-auth/v1/scim/v2/Groups/{id}`
 
 ## Security Model
 
 | Control | Detail |
 |---|---|
-| Break-glass admin isolation | User ID 1 and all `administrator` accounts are blocked from SSO login |
+| Break-glass admin isolation | User ID 1 and all `administrator` accounts are blocked from SSO login and SCIM modification |
 | Immutable IdP UID binding | After first login, accounts are matched by `sub`/NameID, never by email alone |
 | IdP spoofing prevention | Mismatched UID on an existing bound account blocks the login |
-| Role ceiling | SSO can never assign a role above the configured ceiling (default: `editor`) |
+| Role ceiling | SSO and SCIM can never assign a role above the configured ceiling (default: `editor`) |
 | Local account protection | Local accounts on SSO-mapped domains are never redirected to the IdP |
+| SCIM Bearer token auth | Bcrypt-hashed token verification on all SCIM endpoints |
+| SCIM one-time token display | Plaintext token is shown only at generation time and is never stored |
+| SCIM rate limiting | 300 requests/minute per window to prevent runaway syncs |
+| SCIM suspension login block | Deprovisioned users are blocked from all login methods |
 | OIDC state / nonce | Short-lived transients validated on every callback |
 | SAML signature validation | Handled by the OneLogin SAML toolkit |
 | WebAuthn challenges | Short-lived, server-side verified |

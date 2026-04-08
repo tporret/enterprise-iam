@@ -302,9 +302,60 @@ final class EnterpriseProvisioning {
 			return;
 		}
 
+		$resolved_role = self::resolve_role_from_groups( $mapping, $groups );
+
+		if ( null === $resolved_role ) {
+			return;
+		}
+
+		// Enforce the role ceiling.
+		$resolved_role = self::cap_role( $resolved_role );
+
+		$user->set_role( $resolved_role );
+	}
+
+	/**
+	 * Public entry point for SCIM group-based role assignment.
+	 *
+	 * Aggregates role mappings from all configured IdPs and resolves the
+	 * given group names to a WordPress role, respecting the role ceiling.
+	 *
+	 * @param \WP_User $user   The WordPress user to update.
+	 * @param string[] $groups One or more IdP group displayNames.
+	 */
+	public static function assign_role( \WP_User $user, array $groups ): void {
+		// Aggregate role mappings across all configured IdPs.
+		$mapping = array();
+		foreach ( IdpManager::all() as $idp ) {
+			foreach ( ( $idp['role_mapping'] ?? array() ) as $group => $role ) {
+				$mapping[ $group ] = $role;
+			}
+		}
+
+		if ( empty( $mapping ) ) {
+			return;
+		}
+
+		$resolved_role = self::resolve_role_from_groups( $mapping, $groups );
+
+		if ( null === $resolved_role ) {
+			return;
+		}
+
+		$resolved_role = self::cap_role( $resolved_role );
+		$user->set_role( $resolved_role );
+	}
+
+	/**
+	 * Resolve a WordPress role from group names using a mapping table.
+	 *
+	 * @param array<string,string> $mapping IdP group → WP role.
+	 * @param string[]             $groups  Group names to match.
+	 * @return string|null The resolved WP role, or null if no match.
+	 */
+	private static function resolve_role_from_groups( array $mapping, array $groups ): ?string {
 		$resolved_role = null;
 
-		// Try to match an incoming group claim to a mapped role.
 		foreach ( $groups as $group ) {
 			$group_lower = strtolower( (string) $group );
 			foreach ( $mapping as $idp_group => $wp_role ) {
@@ -320,14 +371,7 @@ final class EnterpriseProvisioning {
 			$resolved_role = $mapping['*'];
 		}
 
-		if ( null === $resolved_role ) {
-			return;
-		}
-
-		// Enforce the role ceiling.
-		$resolved_role = self::cap_role( $resolved_role );
-
-		$user->set_role( $resolved_role );
+		return $resolved_role;
 	}
 
 	/**

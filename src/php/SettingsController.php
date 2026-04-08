@@ -41,6 +41,18 @@ final class SettingsController {
 				),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/settings/scim-token',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'generate_scim_token' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
 	}
 
 	private const OPTION_KEY = 'enterprise_auth_settings';
@@ -165,6 +177,32 @@ final class SettingsController {
 				'enum'              => array( 1, 2, 4, 8, 12, 24 ),
 				'sanitize_callback' => 'absint',
 			),
+		);
+	}
+
+	// ── SCIM Token Generation ───────────────────────────────────────────────
+
+	private const SCIM_TOKEN_OPTION = 'enterprise_iam_scim_token';
+
+	/**
+	 * Generate a new SCIM Bearer token.
+	 *
+	 * Creates a cryptographically secure 40-character token, stores only
+	 * the bcrypt hash in wp_options, and returns the plaintext exactly
+	 * once to the admin UI. The plaintext is never persisted.
+	 */
+	public function generate_scim_token( \WP_REST_Request $_request ): \WP_REST_Response {
+		$plaintext = wp_generate_password( 40, false );
+		$hash      = wp_hash_password( $plaintext );
+
+		update_option( self::SCIM_TOKEN_OPTION, $hash );
+
+		return new \WP_REST_Response(
+			array(
+				'token'    => $plaintext,
+				'base_url' => rest_url( self::NAMESPACE . '/scim/v2/' ),
+			),
+			201
 		);
 	}
 }

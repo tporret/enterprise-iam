@@ -4,6 +4,7 @@ import ToggleCard from './components/ToggleCard';
 import PasskeySection from './components/PasskeySection';
 import SamlSettings from './components/SamlSettings';
 import OidcSettings from './components/OidcSettings';
+import ScimSettings from './components/ScimSettings';
 import Toast from './components/Toast';
 
 export default function App() {
@@ -64,7 +65,7 @@ export default function App() {
 			<header className="ea-header">
 				<div className="ea-header__inner">
 					<h1 className="ea-header__title">Enterprise Auth</h1>
-					<span className="ea-header__badge">v1.0.0</span>
+					<span className="ea-header__badge">v1.3.0</span>
 				</div>
 				<p className="ea-header__subtitle">
 					Zero Trust security hardening for WordPress
@@ -92,6 +93,13 @@ export default function App() {
 					onClick={ () => setTab( 'oidc' ) }
 				>
 					Enterprise SSO (OIDC)
+				</button>
+				<button
+					type="button"
+					className={ `ea-tabs__btn${ tab === 'scim' ? ' ea-tabs__btn--active' : '' }` }
+					onClick={ () => setTab( 'scim' ) }
+				>
+					SCIM Provisioning
 				</button>
 			</nav>
 
@@ -158,6 +166,10 @@ export default function App() {
 
 				{ tab === 'oidc' && (
 					<OidcSettings showToast={ showToast } />
+				) }
+
+				{ tab === 'scim' && (
+					<ScimSettings showToast={ showToast } />
 				) }
 			</main>
 

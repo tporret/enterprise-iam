@@ -518,3 +518,91 @@
 .ea-discovery__input {
 	flex: 1;
 }
+
+/* ── SCIM Provisioning Tab ───────────────────────────────────────────────── */
+.ea-card--wide {
+	grid-column: 1 / -1;
+}
+
+.ea-scim-url-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-top: 8px;
+}
+
+.ea-scim-url {
+	flex: 1;
+	background: #f1f5f9;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	padding: 8px 12px;
+	font-size: 13px;
+	font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+	word-break: break-all;
+	color: #1e293b;
+}
+
+.ea-btn--sm {
+	padding: 6px 12px;
+	font-size: 12px;
+	font-weight: 600;
+	border: 1px solid #cbd5e1;
+	border-radius: 6px;
+	background: #fff;
+	color: #334155;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.ea-btn--sm:hover {
+	background: #f1f5f9;
+}
+
+.ea-input--mono {
+	font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+	font-size: 13px;
+}
+
+.ea-scim-token-result {
+	margin-top: 16px;
+}
+
+.ea-scim-token-warning {
+	background: #fef3c7;
+	border: 1px solid #f59e0b;
+	border-radius: 6px;
+	padding: 10px 14px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #92400e;
+	margin-bottom: 10px;
+}
+
+.ea-scim-endpoints {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+	margin-top: 8px;
+}
+
+.ea-scim-endpoints th,
+.ea-scim-endpoints td {
+	text-align: left;
+	padding: 8px 12px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.ea-scim-endpoints th {
+	font-weight: 600;
+	color: #475569;
+	background: #f8fafc;
+}
+
+.ea-scim-endpoints code {
+	font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+	font-size: 12px;
+	background: #f1f5f9;
+	padding: 2px 6px;
+	border-radius: 4px;
+}

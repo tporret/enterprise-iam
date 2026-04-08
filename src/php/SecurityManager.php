@@ -19,6 +19,7 @@ final class SecurityManager {
 		$this->disable_xmlrpc();
 		$this->lockdown_rest_api();
 		$this->restrict_application_passwords();
+		$this->block_suspended_users();
 	}
 
 	// ── XML-RPC ─────────────────────────────────────────────────────────────
@@ -111,6 +112,40 @@ final class SecurityManager {
 				return $available;
 			},
 			10,
+			2
+		);
+	}
+
+	// ── SCIM Suspension Login Block ─────────────────────────────────────────
+
+	/**
+	 * Block login for users suspended via SCIM deprovisioning.
+	 *
+	 * Hooks into the `authenticate` filter at a late priority so it runs
+	 * after WordPress has resolved the user. If `is_scim_suspended` meta
+	 * is strictly "true", the login is rejected regardless of method
+	 * (password, Passkey, SSO).
+	 */
+	private function block_suspended_users(): void {
+		add_filter(
+			'authenticate',
+			static function ( $user, string $username ) {
+				// Only act when WordPress has already resolved a valid user.
+				if ( ! ( $user instanceof \WP_User ) ) {
+					return $user;
+				}
+
+				$suspended = get_user_meta( $user->ID, 'is_scim_suspended', true );
+				if ( 'true' === $suspended ) {
+					return new \WP_Error(
+						'account_suspended',
+						__( 'Account suspended by Identity Provider.', 'enterprise-auth' )
+					);
+				}
+
+				return $user;
+			},
+			100,
 			2
 		);
 	}
