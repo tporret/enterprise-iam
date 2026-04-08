@@ -17,7 +17,6 @@ use EnterpriseAuth\Plugin\Controllers\PasskeyRegistrationController;
 use EnterpriseAuth\Plugin\Controllers\SAML\SamlAcsController;
 use EnterpriseAuth\Plugin\Controllers\SAML\SamlLoginController;
 use EnterpriseAuth\Plugin\Controllers\SAML\SamlMetadataController;
-use EnterpriseAuth\Plugin\Controllers\SSOController;
 
 /**
  * Core bootstrap class.
@@ -44,7 +43,6 @@ final class Core {
 				( new PasskeyLoginController() )->register_routes();
 				( new IdpController() )->register_routes();
 				( new LoginRouter() )->register_routes();
-				( new SSOController() )->register_routes();
 				( new SamlMetadataController() )->register_routes();
 				( new SamlLoginController() )->register_routes();
 				( new SamlAcsController() )->register_routes();
