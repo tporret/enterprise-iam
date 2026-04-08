@@ -235,6 +235,24 @@ final class EnterpriseProvisioning {
 		wp_set_auth_cookie( $user->ID, false );
 		do_action( 'wp_login', $user->user_login, $user );
 
+		// Store the last-used IdP ID in a long-lived cookie so session-expiry
+		// re-auth can redirect seamlessly to the correct provider.
+		$idp_id = $idp['id'] ?? '';
+		if ( '' !== $idp_id && ! headers_sent() ) {
+			setcookie(
+				'enterprise_auth_last_idp',
+				$idp_id,
+				array(
+					'expires'  => time() + ( 90 * DAY_IN_SECONDS ),
+					'path'     => COOKIEPATH,
+					'domain'   => COOKIE_DOMAIN,
+					'secure'   => is_ssl(),
+					'httponly'  => true,
+					'samesite' => 'Lax',
+				)
+			);
+		}
+
 		return true;
 	}
 

@@ -24,6 +24,7 @@ const EMPTY_IDP = {
 	authorization_endpoint: '',
 	token_endpoint: '',
 	userinfo_endpoint: '',
+	force_reauth: false,
 };
 
 function CopyField( { label, value } ) {
@@ -442,6 +443,24 @@ export default function SamlSettings( { showToast } ) {
 					>
 						+ Add Mapping
 					</button>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">
+						<input
+							type="checkbox"
+							checked={ editing.force_reauth || false }
+							onChange={ ( e ) =>
+								updateField( 'force_reauth', e.target.checked )
+							}
+						/>{ ' ' }
+						Force Re-Authentication
+					</label>
+					<p className="ea-label__hint" style={ { margin: '4px 0 0' } }>
+						When enabled, SAML AuthnRequests include ForceAuthn=true,
+						requiring the user to re-authenticate at the IdP even if
+						they have an active IdP session.
+					</p>
 				</div>
 
 				<div className="ea-form-actions">

@@ -171,6 +171,7 @@ final class IdpManager {
 			'custom_email_attr'          => sanitize_text_field( $raw['custom_email_attr'] ?? '' ),
 			'custom_first_name_attr'     => sanitize_text_field( $raw['custom_first_name_attr'] ?? '' ),
 			'custom_last_name_attr'      => sanitize_text_field( $raw['custom_last_name_attr'] ?? '' ),
+			'force_reauth'               => ! empty( $raw['force_reauth'] ),
 		);
 	}
 }

@@ -64,11 +64,11 @@ final class SamlLoginController {
 			// RelayState value. We pass the IdP ID so the ACS
 			// controller can look up the config after the IdP responds.
 			$sso_url = $auth->login(
-				$idp_id,           // returnTo — becomes RelayState (IdP ID)
-				array(),                // parameters
-				false,             // forceAuthn
-				false,             // isPassive
-				true               // stay — return the redirect URL
+				$idp_id,                              // returnTo — becomes RelayState (IdP ID)
+				array(),                               // parameters
+				! empty( $idp['force_reauth'] ),       // forceAuthn
+				false,                                 // isPassive
+				true                                   // stay — return the redirect URL
 			);
 
 			if ( empty( $sso_url ) ) {

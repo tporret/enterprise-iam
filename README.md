@@ -16,6 +16,10 @@ It combines:
 - SCIM 2.0 user provisioning and deprovisioning
 - SCIM group-to-role entitlement mapping
 - Custom attribute mapping per IdP with enterprise preset templates
+- SSO-only account lockdown (password login and password reset blocked for SSO-managed users)
+- Email change protection for SSO-managed users
+- Session expiry auto re-authentication (seamless redirect back to the correct IdP)
+- Force Sign-In Mode — per-IdP ForceAuthn (SAML) and prompt=login (OIDC)
 
 ## Highlights
 
@@ -30,6 +34,10 @@ It combines:
 - Strict account binding via immutable IdP UID (OIDC `sub` / SAML NameID)
 - Configurable JIT role ceiling to prevent privilege escalation
 - Custom attribute mapping per IdP with one-click presets for Azure AD, Okta, Shibboleth, and more
+- SSO-only account lockdown — password login and password reset disabled for SSO-managed users
+- Email change protection — SSO-managed users cannot change their email address
+- Session expiry auto re-auth — expired sessions redirect transparently back to the user's IdP
+- Force Sign-In Mode — optional per-IdP setting to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
 
 ## Requirements
 
@@ -252,6 +260,38 @@ When an IdP sends `PATCH` with `active: false`, the user's roles are removed and
 - `GET|POST /wp-json/enterprise-auth/v1/scim/v2/Groups`
 - `PATCH /wp-json/enterprise-auth/v1/scim/v2/Groups/{id}`
 
+## Identity Governance
+
+All controls in this section target **SSO-bound users** — any WordPress account that has been provisioned or linked via SAML, OIDC, or SCIM (identified by `_enterprise_auth_idp_uid` or `enterprise_iam_scim_id` usermeta). User ID 1 (break-glass admin) is always exempt.
+
+### SSO-Only Account Lockdown
+
+SSO-managed users cannot authenticate using a local password. The `authenticate` filter (priority 25, after WordPress password resolution) blocks any password-based login and returns an error directing the user to Single Sign-On. Password reset emails are also blocked via the `allow_password_reset` filter.
+
+This prevents credential-stuffing attacks on accounts that are intended to be identity-provider-controlled and ensures that password authentication cannot be used to bypass multi-factor enforcement at the IdP.
+
+### Email Change Protection
+
+SSO-managed users cannot change their email address from the WordPress profile screen or REST API. Server-side validation rejects the change via `user_profile_update_errors`. The email field is also rendered `readonly` on the profile page with an inline note explaining that the address is managed by the organization's identity provider.
+
+### Session Expiry Auto Re-Authentication
+
+When a user authenticates via SSO, the plugin stores a `enterprise_auth_last_idp` cookie (90-day TTL, `HttpOnly`, `Secure`, `SameSite=Lax`) recording which IdP they used. When the SSO session expires:
+
+- `force_sso_logout()` clears the WP session and redirects the user directly to the IdP's SSO login endpoint (SAML or OIDC) rather than dropping them on `wp-login.php`.
+- The `login_init` hook additionally intercepts any `reauth=1` or `redirect_to`-bearing request to `wp-login.php` and redirects the user to their IdP automatically, skipping the login form entirely.
+
+This produces a seamless zero-click re-authentication for users on still-active IdP sessions.
+
+### Force Sign-In Mode
+
+Each IdP can optionally require the user to re-authenticate at the IdP on every WordPress login attempt, bypassing any cached IdP session:
+
+- **SAML**: sets `ForceAuthn="true"` in the `<AuthnRequest>`.
+- **OIDC**: appends `prompt=login` to the authorization URL.
+
+Enable with the **Force Re-Authentication** checkbox in each IdP's configuration form.
+
 ## Security Model
 
 | Control | Detail |
@@ -261,6 +301,10 @@ When an IdP sends `PATCH` with `active: false`, the user's roles are removed and
 | IdP spoofing prevention | Mismatched UID on an existing bound account blocks the login |
 | Role ceiling | SSO and SCIM can never assign a role above the configured ceiling (default: `editor`) |
 | Local account protection | Local accounts on SSO-mapped domains are never redirected to the IdP |
+| SSO-only account lockdown | Password login and password reset blocked for all SSO-managed users |
+| Email change protection | SSO-managed users cannot change their email address |
+| Session expiry auto re-auth | Expired sessions redirect to the user's IdP; `enterprise_auth_last_idp` cookie enables seamless routing |
+| Force Sign-In Mode | Optional per-IdP ForceAuthn (SAML) / prompt=login (OIDC) to bypass cached IdP sessions |
 | SCIM Bearer token auth | Bcrypt-hashed token verification on all SCIM endpoints |
 | SCIM one-time token display | Plaintext token is shown only at generation time and is never stored |
 | SCIM rate limiting | 300 requests/minute per window to prevent runaway syncs |

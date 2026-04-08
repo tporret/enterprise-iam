@@ -123,17 +123,20 @@ final class OidcLoginController {
 				);
 			}
 
-			$auth_url = add_query_arg(
-				array(
-					'response_type' => 'code',
-					'client_id'     => $client_id,
-					'redirect_uri'  => $redirect_uri,
-					'scope'         => 'openid email profile',
-					'state'         => $state,
-					'nonce'         => $nonce,
-				),
-				$auth_endpoint
+			$auth_params = array(
+				'response_type' => 'code',
+				'client_id'     => $client_id,
+				'redirect_uri'  => $redirect_uri,
+				'scope'         => 'openid email profile',
+				'state'         => $state,
+				'nonce'         => $nonce,
 			);
+
+			if ( ! empty( $idp['force_reauth'] ) ) {
+				$auth_params['prompt'] = 'login';
+			}
+
+			$auth_url = add_query_arg( $auth_params, $auth_endpoint );
 
 			return new \WP_REST_Response( null, 302, array( 'Location' => $auth_url ) );
 		} catch ( \Throwable $e ) {

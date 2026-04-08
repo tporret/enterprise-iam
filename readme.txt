@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.4.0
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -32,6 +32,10 @@ Key features:
 * SCIM suspension blocks all login methods (password, passkey, SSO)
 * SCIM Provisioning admin tab to view SCIM Base URL and generate one-time tokens
 * Custom attribute mapping per IdP — override the default claim keys for email, first name, and last name with an admin UI toggle and one-click presets for Azure AD (SAML + OIDC), Shibboleth/InCommon OIDs, and Standard/Okta
+* SSO-only account lockdown — password login and password reset disabled for all SSO-managed users
+* Email change protection — SSO-managed users cannot change their email address
+* Session expiry auto re-authentication — expired sessions redirect transparently back to the user's IdP
+* Force Sign-In Mode — per-IdP toggle to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
 * Correct local vs SSO routing — local accounts on SSO domains always reach the password form
 * Security hardening controls for WordPress auth behaviour
 * React-based admin configuration UI
@@ -95,8 +99,19 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 * SCIM rate limiting: 300 requests/minute to prevent runaway IdP syncs.
 * SCIM suspension login block: deprovisioned users (`active: false`) are blocked from all login methods.
 * Local account protection: local accounts on SSO-mapped domains are never redirected to an IdP.
+* SSO-only account lockdown: password login and password reset are blocked for all SSO-managed users (identified by `_enterprise_auth_idp_uid` or `enterprise_iam_scim_id` meta). User ID 1 is exempt.
+* Email change protection: SSO-managed users cannot change their email address via the profile screen or REST API.
+* Session expiry auto re-auth: the `enterprise_auth_last_idp` cookie (90-day, HttpOnly, Secure, SameSite=Lax) enables seamless redirect to the correct IdP when a WP session expires.
+* Force Sign-In Mode: optional per-IdP setting appends ForceAuthn=true (SAML) or prompt=login (OIDC) to each authentication request.
 
 == Changelog ==
+
+= 1.5.0 =
+* Security: SSO-only account lockdown — password login blocked for SSO-managed users via `authenticate` filter (priority 25); password reset blocked via `allow_password_reset` filter
+* Security: Email change protection — `user_profile_update_errors` rejects email changes for SSO-managed users; profile page renders email field as readonly with an IdP-managed note
+* Feature: Session expiry auto re-auth — `enterprise_auth_last_idp` cookie stored on every SSO login; `login_init` hook redirects expired sessions directly to the user's IdP; `force_sso_logout()` redirects to IdP re-auth URL instead of wp-login.php
+* Feature: Force Sign-In Mode — per-IdP `force_reauth` toggle; SAML AuthnRequests include ForceAuthn=true; OIDC authorization requests include prompt=login
+* Feature: Force Re-Authentication checkbox added to SAML and OIDC IdP configuration forms in the React admin UI
 
 = 1.4.0 =
 * Feature: Custom attribute mapping — added "Override Default Attribute Mapping" toggle to SAML and OIDC IdP configuration forms
@@ -150,3 +165,11 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 
 = 1.0.0 =
 Initial release of Enterprise Auth with passkeys, SAML, and OIDC support.
+
+== Upgrade Notice ==
+
+= 1.5.0 =
+Adds identity governance controls: SSO-only account lockdown, email change protection, session expiry auto re-auth, and Force Sign-In Mode. No database changes. Existing IdP configurations are unaffected; the new `force_reauth` field defaults to false.
+
+= 1.4.0 =
+Adds custom attribute mapping per IdP. No breaking changes.

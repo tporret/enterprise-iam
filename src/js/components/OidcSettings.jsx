@@ -23,6 +23,7 @@ const EMPTY_IDP = {
 	domain_mapping: [],
 	role_mapping: {},
 	enabled: true,
+	force_reauth: false,
 };
 
 function RoleMappingRow( { group, role, onChange, onRemove } ) {
@@ -392,6 +393,24 @@ export default function OidcSettings( { showToast } ) {
 					>
 						+ Add Mapping
 					</button>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">
+						<input
+							type="checkbox"
+							checked={ editing.force_reauth || false }
+							onChange={ ( e ) =>
+								updateField( 'force_reauth', e.target.checked )
+							}
+						/>{ ' ' }
+						Force Re-Authentication
+					</label>
+					<p className="ea-label__hint" style={ { margin: '4px 0 0' } }>
+						When enabled, the OIDC authorization request includes
+						prompt=login, requiring the user to re-authenticate at
+						the IdP even if they have an active session.
+					</p>
 				</div>
 
 				<div className="ea-form-actions">

@@ -1,12 +1,13 @@
 <?php
 /**
  * Plugin Name: Enterprise Auth – Identity & Access Management
- * Plugin URI:  https://example.com/enterprise-auth
+ * Plugin URI:  https://porretto.com/enterprise-auth
  * Description: Enterprise-grade Identity & Access Management for WordPress. Zero Trust security hardening, REST API lockdown, and a modern React admin UI.
- * Version:     1.4.0
+ * Version:     1.5.0
  * Requires PHP: 8.1
- * Author:      Enterprise Auth Team
+ * Author:      tporret
  * License:     GPL-2.0-or-later
+ * Donate link: https://porretto.com/donate
  * Text Domain: enterprise-auth
  */
 

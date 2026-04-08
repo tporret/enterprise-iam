@@ -61,6 +61,10 @@ final class Core {
 		add_filter( 'auth_cookie_expiration', array( $this, 'cap_sso_session_lifetime' ), 10, 3 );
 		add_action( 'init', array( $this, 'enforce_sso_session_expiry' ) );
 
+		// Seamless SSO re-auth — intercept wp-login.php and redirect
+		// SSO users back to their IdP instead of showing the local form.
+		add_action( 'login_init', array( $this, 'intercept_login_for_sso_reauth' ) );
+
 		// Security headers on frontend.
 		add_action( 'send_headers', array( $this, 'send_security_headers' ) );
 	}
@@ -150,20 +154,103 @@ final class Core {
 	}
 
 	/**
-	 * Destroy the WordPress session and redirect to the login page.
+	 * Destroy the WordPress session and redirect to the IdP for re-auth.
+	 *
+	 * If the user's last-used IdP is known (via cookie or usermeta),
+	 * redirect directly to the SSO login endpoint for seamless re-auth.
+	 * Otherwise fall back to wp-login.php.
 	 */
 	private function force_sso_logout( int $user_id ): void {
+		// Read the SSO provider binding BEFORE destroying the session.
+		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		$idp          = ! empty( $sso_provider ) ? IdpManager::find( $sso_provider ) : null;
+
 		// Clean up SSO session meta.
 		delete_user_meta( $user_id, '_enterprise_auth_sso_login_at' );
 		delete_user_meta( $user_id, '_enterprise_auth_session_expires' );
 
 		wp_logout();
 
-		$redirect = add_query_arg(
-			'ea_sso_error',
-			rawurlencode( 'Your SSO session has expired. Please log in again.' ),
-			wp_login_url()
-		);
+		// If the IdP is still valid and enabled, redirect directly for re-auth.
+		if ( $idp && ! empty( $idp['enabled'] ) ) {
+			$protocol = $idp['protocol'] ?? '';
+			if ( 'saml' === $protocol ) {
+				$redirect = rest_url( 'enterprise-auth/v1/saml/login?idp_id=' . rawurlencode( $idp['id'] ) );
+			} elseif ( 'oidc' === $protocol ) {
+				$redirect = rest_url( 'enterprise-auth/v1/oidc/login?idp_id=' . rawurlencode( $idp['id'] ) );
+			} else {
+				$redirect = add_query_arg(
+					'ea_sso_error',
+					rawurlencode( 'Your SSO session has expired. Please log in again.' ),
+					wp_login_url()
+				);
+			}
+		} else {
+			$redirect = add_query_arg(
+				'ea_sso_error',
+				rawurlencode( 'Your SSO session has expired. Please log in again.' ),
+				wp_login_url()
+			);
+		}
+
+		wp_safe_redirect( $redirect );
+		exit;
+	}
+
+	/**
+	 * Intercept wp-login.php and automatically redirect SSO users back
+	 * to their IdP for seamless re-authentication.
+	 *
+	 * Only fires when:
+	 * - The user has a `enterprise_auth_last_idp` cookie
+	 * - The login action is the default (not logout, register, etc.)
+	 * - The request has reauth=1 or redirect_to (expired session bounce)
+	 */
+	public function intercept_login_for_sso_reauth(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$action = sanitize_text_field( $_REQUEST['action'] ?? 'login' );
+
+		// Only intercept the default login action.
+		if ( 'login' !== $action && '' !== $action ) {
+			return;
+		}
+
+		// Don't intercept explicit ea_sso_error displays or logout actions.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! empty( $_GET['ea_sso_error'] ) || ! empty( $_GET['loggedout'] ) ) {
+			return;
+		}
+
+		// Check for the last-used IdP cookie.
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$last_idp_id = isset( $_COOKIE['enterprise_auth_last_idp'] )
+			? sanitize_text_field( wp_unslash( $_COOKIE['enterprise_auth_last_idp'] ) )
+			: '';
+
+		if ( '' === $last_idp_id ) {
+			return;
+		}
+
+		// Only redirect when the session has expired (reauth or redirect_to present).
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$is_reauth = ! empty( $_GET['reauth'] ) || ! empty( $_GET['redirect_to'] );
+		if ( ! $is_reauth ) {
+			return;
+		}
+
+		$idp = IdpManager::find( $last_idp_id );
+		if ( ! $idp || empty( $idp['enabled'] ) ) {
+			return;
+		}
+
+		$protocol = $idp['protocol'] ?? '';
+		if ( 'saml' === $protocol ) {
+			$redirect = rest_url( 'enterprise-auth/v1/saml/login?idp_id=' . rawurlencode( $idp['id'] ) );
+		} elseif ( 'oidc' === $protocol ) {
+			$redirect = rest_url( 'enterprise-auth/v1/oidc/login?idp_id=' . rawurlencode( $idp['id'] ) );
+		} else {
+			return;
+		}
 
 		wp_safe_redirect( $redirect );
 		exit;

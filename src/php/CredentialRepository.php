@@ -137,7 +137,7 @@ final class CredentialRepository {
 			$aaguid,
 			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 			base64_decode( $row['public_key'] ),
-			(string) $row['user_id'],
+			hash( 'sha256', (string) $row['user_id'], true ),
 			(int) $row['sign_count'],
 		);
 	}

@@ -20,6 +20,9 @@ final class SecurityManager {
 		$this->lockdown_rest_api();
 		$this->restrict_application_passwords();
 		$this->block_suspended_users();
+		$this->block_sso_password_login();
+		$this->block_sso_password_reset();
+		$this->block_sso_email_change();
 	}
 
 	// ── XML-RPC ─────────────────────────────────────────────────────────────
@@ -148,5 +151,141 @@ final class SecurityManager {
 			100,
 			2
 		);
+	}
+
+	// ── SSO-Only Account Lockdown ───────────────────────────────────────────
+
+	/**
+	 * Check whether a user is SSO-bound (managed by an IdP or SCIM).
+	 *
+	 * User ID 1 (break-glass admin) is always excluded.
+	 */
+	private static function is_sso_bound( int $user_id ): bool {
+		if ( 1 === $user_id ) {
+			return false;
+		}
+
+		$idp_uid = get_user_meta( $user_id, '_enterprise_auth_idp_uid', true );
+		if ( '' !== $idp_uid ) {
+			return true;
+		}
+
+		$scim_id = get_user_meta( $user_id, 'enterprise_iam_scim_id', true );
+		if ( '' !== $scim_id ) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Block local password login for SSO-bound users.
+	 *
+	 * Hooks at priority 20 (after wp_authenticate_username_password at 20)
+	 * so the user object is resolved. Passkey and SSO logins bypass
+	 * wp_authenticate entirely or go through separate flows.
+	 */
+	private function block_sso_password_login(): void {
+		add_filter(
+			'authenticate',
+			static function ( $user, string $username, string $password ) {
+				if ( ! ( $user instanceof \WP_User ) ) {
+					return $user;
+				}
+
+				// Only block when a password was submitted (local login attempt).
+				if ( '' === $password ) {
+					return $user;
+				}
+
+				if ( self::is_sso_bound( $user->ID ) ) {
+					return new \WP_Error(
+						'sso_only_account',
+						__( 'This account is managed by your organization. Please use Single Sign-On to log in.', 'enterprise-auth' )
+					);
+				}
+
+				return $user;
+			},
+			25,
+			3
+		);
+	}
+
+	/**
+	 * Block password reset (Lost Password) for SSO-bound users.
+	 */
+	private function block_sso_password_reset(): void {
+		add_filter(
+			'allow_password_reset',
+			static function ( bool $allow, int $user_id ) {
+				if ( self::is_sso_bound( $user_id ) ) {
+					return false;
+				}
+				return $allow;
+			},
+			10,
+			2
+		);
+	}
+
+	// ── Email Change Protection ────────────────────────────────────────────
+
+	/**
+	 * Prevent SSO-managed users from changing their email address.
+	 *
+	 * Hooks into profile save validation and profile rendering to
+	 * both enforce the restriction and communicate it in the UI.
+	 */
+	private function block_sso_email_change(): void {
+		// Block email changes during profile save.
+		add_action(
+			'user_profile_update_errors',
+			static function ( \WP_Error $errors, bool $update, \stdClass $user ) {
+				if ( ! $update || empty( $user->ID ) ) {
+					return;
+				}
+
+				if ( ! self::is_sso_bound( (int) $user->ID ) ) {
+					return;
+				}
+
+				$existing = get_userdata( (int) $user->ID );
+				if ( $existing && isset( $user->user_email ) && $user->user_email !== $existing->user_email ) {
+					$errors->add(
+						'sso_email_locked',
+						__( 'Your email address is managed by your Identity Provider and cannot be changed locally.', 'enterprise-auth' )
+					);
+					// Restore the original email so WP core doesn't persist the change.
+					$user->user_email = $existing->user_email;
+				}
+			},
+			10,
+			3
+		);
+
+		// Make the email field read-only in the profile UI.
+		$render_readonly = static function ( \WP_User $user ): void {
+			if ( ! self::is_sso_bound( $user->ID ) ) {
+				return;
+			}
+			?>
+			<script>
+			( function() {
+				var el = document.getElementById( 'email' );
+				if ( el ) {
+					el.setAttribute( 'readonly', 'readonly' );
+					el.style.opacity = '0.7';
+					var note = document.createElement( 'p' );
+					note.className = 'description';
+					note.textContent = 'This email address is managed by your Identity Provider.';
+					el.parentNode.appendChild( note );
+				}
+			} )();
+			</script>
+			<?php
+		};
+		add_action( 'show_user_profile', $render_readonly );
+		add_action( 'edit_user_profile', $render_readonly );
 	}
 }
