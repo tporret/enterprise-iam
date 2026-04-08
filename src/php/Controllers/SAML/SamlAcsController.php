@@ -133,11 +133,15 @@ final class SamlAcsController {
 			?? $attrs['memberOf']
 			?? array();
 
+		// Use the SAML NameID as the immutable IdP unique identifier.
+		$name_id = $auth->getNameId();
+
 		return array(
 			'email'      => $email,
 			'first_name' => $first_name,
 			'last_name'  => $last_name,
 			'groups'     => (array) $groups,
+			'idp_uid'    => is_string( $name_id ) ? $name_id : '',
 		);
 	}
 

@@ -2,7 +2,6 @@ import { useState, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
 const WP_ROLES = [
-	{ value: 'administrator', label: 'Administrator' },
 	{ value: 'editor', label: 'Editor' },
 	{ value: 'author', label: 'Author' },
 	{ value: 'contributor', label: 'Contributor' },

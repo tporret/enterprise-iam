@@ -11,6 +11,7 @@ export default function App() {
 	const [ settings, setSettings ] = useState( {
 		lockdown_mode: true,
 		app_passwords: false,
+		role_ceiling: 'editor',
 	} );
 	const [ saving, setSaving ] = useState( false );
 	const [ loaded, setLoaded ] = useState( false );
@@ -110,6 +111,23 @@ export default function App() {
 							disabled={ saving }
 							onChange={ ( val ) => updateSetting( 'app_passwords', val ) }
 						/>
+						<div className="ea-card">
+							<h3 className="ea-card__title">SSO Role Ceiling</h3>
+							<p className="ea-card__desc">
+								Maximum role that SSO / JIT provisioning can assign. Prevents a compromised IdP from granting Administrator access.
+							</p>
+							<select
+								className="ea-input"
+								value={ settings.role_ceiling }
+								disabled={ saving }
+								onChange={ ( e ) => updateSetting( 'role_ceiling', e.target.value ) }
+							>
+								<option value="editor">Editor</option>
+								<option value="author">Author</option>
+								<option value="contributor">Contributor</option>
+								<option value="subscriber">Subscriber</option>
+							</select>
+						</div>
 						<PasskeySection showToast={ showToast } />
 					</section>
 				) }

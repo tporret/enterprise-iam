@@ -48,7 +48,10 @@ final class SettingsController {
 	private const DEFAULTS = array(
 		'lockdown_mode' => true,
 		'app_passwords' => false,
+		'role_ceiling'  => 'editor',
 	);
+
+	private const ALLOWED_CEILINGS = array( 'editor', 'author', 'contributor', 'subscriber' );
 
 	/**
 	 * Only administrators may access these endpoints.
@@ -72,12 +75,19 @@ final class SettingsController {
 		$current = self::read();
 		$params  = $request->get_json_params();
 
-		// Only allow known keys through; cast every value to boolean.
+		// Boolean settings.
 		$sanitized = array();
-		foreach ( self::DEFAULTS as $key => $default ) {
+		foreach ( array( 'lockdown_mode', 'app_passwords' ) as $key ) {
 			$sanitized[ $key ] = isset( $params[ $key ] )
 				? rest_sanitize_boolean( $params[ $key ] )
 				: $current[ $key ];
+		}
+
+		// Role ceiling — must be one of the allowed values.
+		if ( isset( $params['role_ceiling'] ) && in_array( $params['role_ceiling'], self::ALLOWED_CEILINGS, true ) ) {
+			$sanitized['role_ceiling'] = $params['role_ceiling'];
+		} else {
+			$sanitized['role_ceiling'] = $current['role_ceiling'];
 		}
 
 		update_option( self::OPTION_KEY, $sanitized );
@@ -99,9 +109,14 @@ final class SettingsController {
 			$raw = array();
 		}
 
+		$ceiling = isset( $raw['role_ceiling'] ) && in_array( $raw['role_ceiling'], self::ALLOWED_CEILINGS, true )
+			? $raw['role_ceiling']
+			: self::DEFAULTS['role_ceiling'];
+
 		return array(
 			'lockdown_mode' => isset( $raw['lockdown_mode'] ) ? (bool) $raw['lockdown_mode'] : self::DEFAULTS['lockdown_mode'],
 			'app_passwords' => isset( $raw['app_passwords'] ) ? (bool) $raw['app_passwords'] : self::DEFAULTS['app_passwords'],
+			'role_ceiling'  => $ceiling,
 		);
 	}
 
@@ -121,6 +136,12 @@ final class SettingsController {
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
+			'role_ceiling'  => array(
+				'type'              => 'string',
+				'required'          => false,
+				'enum'              => array( 'editor', 'author', 'contributor', 'subscriber' ),
+				'sanitize_callback' => 'sanitize_text_field',
 			),
 		);
 	}

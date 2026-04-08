@@ -172,11 +172,16 @@ final class OidcCallbackController {
 				$groups = $groups ? array( $groups ) : array();
 			}
 
+			// Extract the immutable subject identifier for strict account binding.
+			$sub = $oidc->getVerifiedClaims( 'sub' );
+			$sub = is_string( $sub ) ? $sub : '';
+
 			$attributes = array(
 				'email'      => sanitize_email( $email ),
 				'first_name' => sanitize_text_field( (string) $given_name ),
 				'last_name'  => sanitize_text_field( (string) $family_name ),
 				'groups'     => array_map( 'sanitize_text_field', $groups ),
+				'idp_uid'    => sanitize_text_field( $sub ),
 			);
 
 			// ── JIT provisioning and login ──────────────────────────────
