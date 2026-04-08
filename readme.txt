@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.5.0
+Stable tag: 1.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -36,6 +36,7 @@ Key features:
 * Email change protection — SSO-managed users cannot change their email address
 * Session expiry auto re-authentication — expired sessions redirect transparently back to the user's IdP
 * Force Sign-In Mode — per-IdP toggle to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
+* REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of sensitive dynamic responses
 * Correct local vs SSO routing — local accounts on SSO domains always reach the password form
 * Security hardening controls for WordPress auth behaviour
 * React-based admin configuration UI
@@ -103,8 +104,12 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 * Email change protection: SSO-managed users cannot change their email address via the profile screen or REST API.
 * Session expiry auto re-auth: the `enterprise_auth_last_idp` cookie (90-day, HttpOnly, Secure, SameSite=Lax) enables seamless redirect to the correct IdP when a WP session expires.
 * Force Sign-In Mode: optional per-IdP setting appends ForceAuthn=true (SAML) or prompt=login (OIDC) to each authentication request.
+* REST API cache-control: all `enterprise-auth/` REST endpoints return `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0` headers. This defends against web cache deception and poisoning attacks where CDN or proxy URL-parser discrepancies could cause sensitive dynamic responses to be stored and served to other users.
 
 == Changelog ==
+
+= 1.5.1 =
+* Security: REST API cache-control hardening — added `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0` to all `enterprise-auth/` REST responses via `rest_post_dispatch` filter, preventing CDN/proxy caching of sensitive dynamic responses (web cache deception/poisoning defence)
 
 = 1.5.0 =
 * Security: SSO-only account lockdown — password login blocked for SSO-managed users via `authenticate` filter (priority 25); password reset blocked via `allow_password_reset` filter
@@ -167,6 +172,9 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 Initial release of Enterprise Auth with passkeys, SAML, and OIDC support.
 
 == Upgrade Notice ==
+
+= 1.5.1 =
+Security hardening: all plugin REST endpoints now include anti-caching headers to prevent CDN/proxy web cache deception attacks. No configuration changes needed.
 
 = 1.5.0 =
 Adds identity governance controls: SSO-only account lockdown, email change protection, session expiry auto re-auth, and Force Sign-In Mode. No database changes. Existing IdP configurations are unaffected; the new `force_reauth` field defaults to false.

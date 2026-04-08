@@ -67,6 +67,9 @@ final class Core {
 
 		// Security headers on frontend.
 		add_action( 'send_headers', array( $this, 'send_security_headers' ) );
+
+		// Prevent CDN / proxy caching of dynamic REST responses.
+		add_filter( 'rest_post_dispatch', array( $this, 'add_rest_cache_headers' ), 10, 3 );
 	}
 
 	/**
@@ -85,6 +88,31 @@ final class Core {
 				header( sprintf( '%s: %s', $name, $value ), false );
 			}
 		}
+	}
+
+	/**
+	 * Mark every enterprise-auth REST response as non-cacheable.
+	 *
+	 * Defence against web cache deception / poisoning attacks that exploit
+	 * URL-parser discrepancies between CDN proxies and the origin server
+	 * (see PortSwigger "Gotta cache 'em all").  By setting no-store on
+	 * all dynamic responses, CDNs that respect Cache-Control will never
+	 * store them — regardless of static-extension or static-directory
+	 * cache rules.
+	 *
+	 * @param \WP_REST_Response $response The outgoing response.
+	 * @param \WP_REST_Server   $server   REST server instance.
+	 * @param \WP_REST_Request  $request  The incoming request.
+	 * @return \WP_REST_Response
+	 */
+	public function add_rest_cache_headers( \WP_REST_Response $response, \WP_REST_Server $server, \WP_REST_Request $request ): \WP_REST_Response {
+		$route = $request->get_route();
+		if ( str_starts_with( $route, '/enterprise-auth/' ) ) {
+			$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, private' );
+			$response->header( 'Pragma', 'no-cache' );
+			$response->header( 'Expires', '0' );
+		}
+		return $response;
 	}
 
 	/**

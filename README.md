@@ -20,6 +20,7 @@ It combines:
 - Email change protection for SSO-managed users
 - Session expiry auto re-authentication (seamless redirect back to the correct IdP)
 - Force Sign-In Mode — per-IdP ForceAuthn (SAML) and prompt=login (OIDC)
+- REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of dynamic responses
 
 ## Highlights
 
@@ -38,6 +39,7 @@ It combines:
 - Email change protection — SSO-managed users cannot change their email address
 - Session expiry auto re-auth — expired sessions redirect transparently back to the user's IdP
 - Force Sign-In Mode — optional per-IdP setting to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
+- REST API cache-control hardening — `Cache-Control: no-store, no-cache, must-revalidate, private` on all `enterprise-auth/` REST responses to prevent web cache deception and poisoning attacks
 
 ## Requirements
 
