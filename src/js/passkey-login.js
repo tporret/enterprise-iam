@@ -118,8 +118,18 @@ import './passkey-login.css';
 			stepContinue.style.display = 'none';
 		}
 		step2Els.forEach( function ( el ) {
-			el.style.display = '';
+			el.style.display = 'block';
 		} );
+
+		// Reorder: move remember-me and Log In button above the passkey
+		// section so the layout is: password → login → divider → passkey.
+		if ( stepPasskey ) {
+			[ forgetMe, submitP ].forEach( function ( el ) {
+				if ( el && el.parentNode ) {
+					el.parentNode.insertBefore( el, stepPasskey );
+				}
+			} );
+		}
 
 		// Show passkey button (only if WebAuthn is supported)
 		if ( stepPasskey && window.PublicKeyCredential ) {
@@ -133,6 +143,7 @@ import './passkey-login.css';
 		userLogin.value = email;
 		var passField = document.getElementById( 'user_pass' );
 		if ( passField ) {
+			passField.disabled = false;
 			passField.focus();
 		}
 	}

@@ -69,6 +69,9 @@ final class LoginFlow {
 			#loginform > .forgetmenot,
 			#loginform > p.submit { display: none; }
 
+			/* Clear WP floats so the passkey section drops below Log In */
+			#ea-step-passkey { clear: both; }
+
 			#loginform label[for="user_login"] { /* rewritten by JS */ }
 		</style>
 		<?php

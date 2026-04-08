@@ -66,6 +66,23 @@ final class LoginRouter {
 			);
 		}
 
+		// Even when a domain is mapped to an IdP, a WordPress account that
+		// has no SSO provider binding is a local account and must log in
+		// locally (password / passkey). This preserves break-glass admin
+		// access and any other intentionally-local accounts on SSO domains.
+		$wp_user = get_user_by( 'email', $email );
+		if ( $wp_user ) {
+			$existing_provider = get_user_meta( $wp_user->ID, '_enterprise_auth_sso_provider', true );
+			if ( empty( $existing_provider ) ) {
+				return new \WP_REST_Response(
+					array(
+						'method' => 'local',
+					),
+					200
+				);
+			}
+		}
+
 		// Build the SSO redirect URL based on protocol.
 		$redirect_url = $this->build_redirect_url( $idp, $email );
 
