@@ -3,7 +3,7 @@
  * Plugin Name: Enterprise Auth – Identity & Access Management
  * Plugin URI:  https://example.com/enterprise-auth
  * Description: Enterprise-grade Identity & Access Management for WordPress. Zero Trust security hardening, REST API lockdown, and a modern React admin UI.
- * Version:     1.3.0
+ * Version:     1.4.0
  * Requires PHP: 8.1
  * Author:      Enterprise Auth Team
  * License:     GPL-2.0-or-later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
-define( 'ENTERPRISE_AUTH_VERSION', '1.3.0' );
+define( 'ENTERPRISE_AUTH_VERSION', '1.4.0' );
 define( 'ENTERPRISE_AUTH_FILE', __FILE__ );
 define( 'ENTERPRISE_AUTH_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ENTERPRISE_AUTH_URL', plugin_dir_url( __FILE__ ) );

@@ -1,5 +1,6 @@
 import { useState, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
+import AttributeMappingSection from './AttributeMappingSection';
 
 const WP_ROLES = [
 	{ value: 'editor', label: 'Editor' },
@@ -345,6 +346,15 @@ export default function OidcSettings( { showToast } ) {
 						}
 					/>
 				</div>
+
+				<AttributeMappingSection
+					protocol="oidc"
+					overrideMapping={ editing.override_attribute_mapping || false }
+					customEmailAttr={ editing.custom_email_attr || '' }
+					customFirstNameAttr={ editing.custom_first_name_attr || '' }
+					customLastNameAttr={ editing.custom_last_name_attr || '' }
+					onUpdateField={ updateField }
+				/>
 
 				<div className="ea-form-group">
 					<label className="ea-label">

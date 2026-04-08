@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,7 @@ Key features:
 * SCIM group-to-role entitlement mapping using the existing role mapping engine
 * SCIM suspension blocks all login methods (password, passkey, SSO)
 * SCIM Provisioning admin tab to view SCIM Base URL and generate one-time tokens
+* Custom attribute mapping per IdP — override the default claim keys for email, first name, and last name with an admin UI toggle and one-click presets for Azure AD (SAML + OIDC), Shibboleth/InCommon OIDs, and Standard/Okta
 * Correct local vs SSO routing — local accounts on SSO domains always reach the password form
 * Security hardening controls for WordPress auth behaviour
 * React-based admin configuration UI
@@ -96,6 +97,14 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 * Local account protection: local accounts on SSO-mapped domains are never redirected to an IdP.
 
 == Changelog ==
+
+= 1.4.0 =
+* Feature: Custom attribute mapping — added "Override Default Attribute Mapping" toggle to SAML and OIDC IdP configuration forms
+* Feature: Per-IdP attribute key inputs for Email, First Name, and Last Name claim/attribute names
+* Feature: Load Preset dropdown auto-fills all three keys for Standard/Okta, Azure AD (Microsoft Entra), and Shibboleth/InCommon (OIDs) on SAML; Standard OIDC and Azure AD OIDC on OIDC
+* Feature: Custom keys are persisted in `wp_options` (`enterprise_auth_idps`) alongside all other IdP config and fully sanitized server-side
+* Feature: SAML ACS controller uses custom attribute keys when override is enabled, falling back to the full OID/claim URI chain when disabled
+* Feature: OIDC callback controller uses custom claim keys (including the UserInfo fallback path) when override is enabled
 
 = 1.3.0 =
 * Feature: SCIM read operations — GET /scim/v2/Users returns RFC 7644 ListResponse with pagination (`startIndex`, `count`) and basic `userName eq "..."` filtering

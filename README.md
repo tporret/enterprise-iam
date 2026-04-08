@@ -15,6 +15,7 @@ It combines:
 - Configurable JIT role ceiling
 - SCIM 2.0 user provisioning and deprovisioning
 - SCIM group-to-role entitlement mapping
+- Custom attribute mapping per IdP with enterprise preset templates
 
 ## Highlights
 
@@ -28,6 +29,7 @@ It combines:
 - Break-glass admin isolation — SSO cannot target administrator accounts
 - Strict account binding via immutable IdP UID (OIDC `sub` / SAML NameID)
 - Configurable JIT role ceiling to prevent privilege escalation
+- Custom attribute mapping per IdP with one-click presets for Azure AD, Okta, Shibboleth, and more
 
 ## Requirements
 
@@ -107,6 +109,47 @@ Configure:
 - Client ID and client secret
 
 Users are redirected through the OIDC Authorization Code flow and validated on callback.
+
+## Custom Attribute Mapping
+
+By default, the plugin uses a multi-format fallback chain for reading email, first name, and last name from IdP assertions (covering Azure AD URIs, Shibboleth OIDs, and standard short names simultaneously). When your IdP uses non-standard claim keys, you can override the defaults per provider.
+
+### Enabling override
+
+In the SAML or OIDC editing form, toggle **Override Default Attribute Mapping**. Three text inputs appear:
+
+| Field | Description |
+|---|---|
+| Email Attribute Key | The assertion key or claim name containing the user's email address |
+| First Name Attribute Key | The claim name for the user's given name |
+| Last Name Attribute Key | The claim name for the user's family name |
+
+### IdP Presets
+
+A **Load Preset** dropdown auto-fills all three keys for common enterprise IdPs. Selecting a preset fills the inputs; you can then adjust any individual field before saving.
+
+**SAML Presets**
+
+| Preset | Email | First Name | Last Name |
+|---|---|---|---|
+| Standard / Okta | `email` | `firstName` | `lastName` |
+| Azure AD (Microsoft Entra) | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname` | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname` |
+| Shibboleth / InCommon (OIDs) | `urn:oid:0.9.2342.19200300.100.1.3` | `urn:oid:2.5.4.42` | `urn:oid:2.5.4.4` |
+
+**OIDC Presets**
+
+| Preset | Email | First Name | Last Name |
+|---|---|---|---|
+| Standard OIDC (Okta / Google / Auth0) | `email` | `given_name` | `family_name` |
+| Azure AD OIDC | `preferred_username` | `given_name` | `family_name` |
+
+### Persistence
+
+The toggle state (`override_attribute_mapping`) and three keys (`custom_email_attr`, `custom_first_name_attr`, `custom_last_name_attr`) are stored alongside all other IdP configuration in `wp_options` (`enterprise_auth_idps`) and are fully sanitized server-side before persistence.
+
+### Provisioning behavior
+
+When override is enabled, the custom keys replace the built-in fallback chain. If neither the custom key nor any fallback yields a valid email, provisioning is aborted with an error. When override is disabled (the default), the full multi-format fallback chain is used unchanged.
 
 ## Role Mapping
 

@@ -141,9 +141,15 @@ final class OidcCallbackController {
 			$oidc->authenticate();
 
 			// ── Extract user claims ─────────────────────────────────────
-			$email       = $oidc->getVerifiedClaims( 'email' );
-			$given_name  = $oidc->getVerifiedClaims( 'given_name' );
-			$family_name = $oidc->getVerifiedClaims( 'family_name' );
+			$use_custom = ! empty( $idp['override_attribute_mapping'] );
+
+			$email_key      = ( $use_custom && ! empty( $idp['custom_email_attr'] ) ) ? $idp['custom_email_attr'] : 'email';
+			$first_name_key = ( $use_custom && ! empty( $idp['custom_first_name_attr'] ) ) ? $idp['custom_first_name_attr'] : 'given_name';
+			$last_name_key  = ( $use_custom && ! empty( $idp['custom_last_name_attr'] ) ) ? $idp['custom_last_name_attr'] : 'family_name';
+
+			$email       = $oidc->getVerifiedClaims( $email_key );
+			$given_name  = $oidc->getVerifiedClaims( $first_name_key );
+			$family_name = $oidc->getVerifiedClaims( $last_name_key );
 			$given_name  = is_string( $given_name ) ? $given_name : '';
 			$family_name = is_string( $family_name ) ? $family_name : '';
 			$groups      = $oidc->getVerifiedClaims( 'groups' );
@@ -151,12 +157,12 @@ final class OidcCallbackController {
 			// Fallback: try requestUserInfo if email not in ID token.
 			if ( empty( $email ) ) {
 				$userinfo = $oidc->requestUserInfo();
-				$email    = $userinfo->email ?? '';
+				$email    = $userinfo->{$email_key} ?? '';
 				if ( '' === $given_name ) {
-					$given_name = (string) ( $userinfo->given_name ?? '' );
+					$given_name = (string) ( $userinfo->{$first_name_key} ?? '' );
 				}
 				if ( '' === $family_name ) {
-					$family_name = (string) ( $userinfo->family_name ?? '' );
+					$family_name = (string) ( $userinfo->{$last_name_key} ?? '' );
 				}
 				if ( empty( $groups ) ) {
 					$groups = $userinfo->groups ?? array();

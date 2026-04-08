@@ -82,7 +82,7 @@ final class SamlAcsController {
 			}
 
 			// Extract user attributes.
-			$attributes = $this->extract_attributes( $auth );
+			$attributes = $this->extract_attributes( $auth, $idp );
 
 			// Honour SAML SessionNotOnOrAfter if the IdP provided one.
 			$session_expiry = $auth->getSessionExpiration();
@@ -109,33 +109,56 @@ final class SamlAcsController {
 	/**
 	 * Extract user attributes from a validated SAML assertion.
 	 *
+	 * When the IdP has override_attribute_mapping enabled, the custom keys
+	 * are used to read email, first name, and last name from the assertion.
+	 *
+	 * @param \OneLogin\Saml2\Auth $auth
+	 * @param array<string, mixed> $idp  IdP configuration from IdpManager.
 	 * @return array{email: string, first_name: string, last_name: string, groups: string[]}
 	 */
-	private function extract_attributes( \OneLogin\Saml2\Auth $auth ): array {
+	private function extract_attributes( \OneLogin\Saml2\Auth $auth, array $idp ): array {
 		$attrs = $auth->getAttributes();
 
+		$use_custom = ! empty( $idp['override_attribute_mapping'] );
+
+		// ── Email ────────────────────────────────────────────────────────
 		// NameID is the primary email source.
 		$email = $auth->getNameId();
 
-		// Fallback: try common attribute OIDs / claim URIs.
-		if ( ! is_email( $email ) ) {
+		if ( $use_custom && ! empty( $idp['custom_email_attr'] ) ) {
+			$custom_email = $attrs[ $idp['custom_email_attr'] ][0] ?? '';
+			if ( '' !== $custom_email ) {
+				$email = $custom_email;
+			}
+		} elseif ( ! is_email( $email ) ) {
+			// Fallback: try common attribute OIDs / claim URIs.
 			$email = $attrs['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'][0]
 				?? $attrs['urn:oid:0.9.2342.19200300.100.1.3'][0]  // mail
 				?? $attrs['email'][0]
 				?? '';
 		}
 
-		$first_name = $attrs['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname'][0]
-			?? $attrs['urn:oid:2.5.4.42'][0]   // givenName
-			?? $attrs['givenName'][0]
-			?? $attrs['firstName'][0]
-			?? '';
+		// ── First name ──────────────────────────────────────────────────
+		if ( $use_custom && ! empty( $idp['custom_first_name_attr'] ) ) {
+			$first_name = $attrs[ $idp['custom_first_name_attr'] ][0] ?? '';
+		} else {
+			$first_name = $attrs['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname'][0]
+				?? $attrs['urn:oid:2.5.4.42'][0]   // givenName
+				?? $attrs['givenName'][0]
+				?? $attrs['firstName'][0]
+				?? '';
+		}
 
-		$last_name = $attrs['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname'][0]
-			?? $attrs['urn:oid:2.5.4.4'][0]    // sn
-			?? $attrs['sn'][0]
-			?? $attrs['lastName'][0]
-			?? '';
+		// ── Last name ───────────────────────────────────────────────────
+		if ( $use_custom && ! empty( $idp['custom_last_name_attr'] ) ) {
+			$last_name = $attrs[ $idp['custom_last_name_attr'] ][0] ?? '';
+		} else {
+			$last_name = $attrs['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname'][0]
+				?? $attrs['urn:oid:2.5.4.4'][0]    // sn
+				?? $attrs['sn'][0]
+				?? $attrs['lastName'][0]
+				?? '';
+		}
 
 		$groups = $attrs['http://schemas.xmlsoap.org/claims/Group']
 			?? $attrs['groups']
