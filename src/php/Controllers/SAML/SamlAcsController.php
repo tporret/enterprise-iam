@@ -84,6 +84,15 @@ final class SamlAcsController {
 			// Extract user attributes.
 			$attributes = $this->extract_attributes( $auth );
 
+			// Honour SAML SessionNotOnOrAfter if the IdP provided one.
+			$session_expiry = $auth->getSessionExpiration();
+			if ( ! empty( $session_expiry ) ) {
+				$attributes['session_not_on_or_after'] = (int) $session_expiry;
+			}
+
+			// Store the SAML IdP entity ID as the canonical issuer identifier.
+			$attributes['idp_issuer'] = sanitize_text_field( $idp['entity_id'] ?? '' );
+
 			// JIT provisioning and login.
 			$result = EnterpriseProvisioning::provision_and_login( $idp, $attributes );
 
@@ -137,11 +146,15 @@ final class SamlAcsController {
 		$name_id = $auth->getNameId();
 
 		return array(
-			'email'      => $email,
-			'first_name' => $first_name,
-			'last_name'  => $last_name,
-			'groups'     => (array) $groups,
-			'idp_uid'    => is_string( $name_id ) ? $name_id : '',
+			'email'          => $email,
+			'first_name'     => $first_name,
+			'last_name'      => $last_name,
+			'groups'         => (array) $groups,
+			'idp_uid'        => is_string( $name_id ) ? $name_id : '',
+			// SAML assertions are signed by the IdP; the signature verification
+			// performed above inherently vouches for all attribute values
+			// including email. Treat as email_verified unless overridden.
+			'email_verified' => true,
 		);
 	}
 

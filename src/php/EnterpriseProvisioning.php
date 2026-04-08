@@ -24,6 +24,7 @@ final class EnterpriseProvisioning {
 
 	private const META_SSO_PROVIDER = '_enterprise_auth_sso_provider';
 	private const META_IDP_UID      = '_enterprise_auth_idp_uid';
+	private const META_IDP_ISSUER   = '_enterprise_auth_idp_issuer';
 
 	/**
 	 * Ordered role hierarchy from highest to lowest privilege.
@@ -45,9 +46,11 @@ final class EnterpriseProvisioning {
 	 * @return true|\WP_Error
 	 */
 	public static function provision_and_login( array $idp, array $attributes ) {
-		$email   = sanitize_email( $attributes['email'] ?? '' );
-		$idp_uid = sanitize_text_field( $attributes['idp_uid'] ?? '' );
-		$idp_id  = $idp['id'] ?? '';
+		$email          = sanitize_email( $attributes['email'] ?? '' );
+		$idp_uid        = sanitize_text_field( $attributes['idp_uid'] ?? '' );
+		$idp_id         = $idp['id'] ?? '';
+		$idp_issuer     = sanitize_text_field( $attributes['idp_issuer'] ?? '' );
+		$email_verified = ! empty( $attributes['email_verified'] );
 
 		if ( ! is_email( $email ) ) {
 			return new \WP_Error( 'enterprise_provision', 'No valid email address in identity assertion.' );
@@ -62,8 +65,33 @@ final class EnterpriseProvisioning {
 			if ( is_wp_error( $admin_check ) ) {
 				return $admin_check;
 			}
+
+			// Verify the issuer hasn't changed (iss+sub composite check).
+			if ( '' !== $idp_issuer ) {
+				$stored_issuer = get_user_meta( $user->ID, self::META_IDP_ISSUER, true );
+				if ( '' === $stored_issuer ) {
+					// Back-fill issuer for accounts created before this check.
+					update_user_meta( $user->ID, self::META_IDP_ISSUER, $idp_issuer );
+				} elseif ( $stored_issuer !== $idp_issuer ) {
+					return new \WP_Error(
+						'enterprise_provision',
+						'Issuer mismatch: the identity provider issuer does not match the bound account. Login blocked.'
+					);
+				}
+			}
 		} elseif ( '' !== $idp_uid ) {
 			// ── 2. First-time binding: fall back to email lookup ─────────
+			// Require a verified email before binding an IdP identity to an
+			// existing WordPress account. Without this check, an attacker who
+			// controls an IdP could claim any email address and hijack the
+			// linked WordPress account.
+			if ( ! $email_verified ) {
+				return new \WP_Error(
+					'enterprise_provision',
+					'Your identity provider did not confirm your email address (email_verified). Login blocked for account safety.'
+				);
+			}
+
 			$user = get_user_by( 'email', $email );
 
 			if ( $user ) {
@@ -90,10 +118,13 @@ final class EnterpriseProvisioning {
 				}
 
 				// The user exists and belongs to this IdP but has no UID stored yet.
-				// Bind the immutable UID now.
+				// Bind the immutable UID and issuer now.
 				$stored_uid = get_user_meta( $user->ID, self::META_IDP_UID, true );
 				if ( '' === $stored_uid ) {
 					update_user_meta( $user->ID, self::META_IDP_UID, $idp_uid );
+					if ( '' !== $idp_issuer ) {
+						update_user_meta( $user->ID, self::META_IDP_ISSUER, $idp_issuer );
+					}
 				} elseif ( $stored_uid !== $idp_uid ) {
 					// UID mismatch — possible IdP spoofing.
 					return new \WP_Error(
@@ -104,6 +135,15 @@ final class EnterpriseProvisioning {
 			}
 		} else {
 			// No idp_uid provided — legacy email-only lookup.
+			// Without an immutable UID, email is the only identifier.
+			// Require verified email for this unsafe path.
+			if ( ! $email_verified ) {
+				return new \WP_Error(
+					'enterprise_provision',
+					'Your identity provider did not confirm your email address (email_verified). Login blocked for account safety.'
+				);
+			}
+
 			$user = get_user_by( 'email', $email );
 
 			if ( $user ) {
@@ -132,6 +172,14 @@ final class EnterpriseProvisioning {
 
 		// ── 3. New user creation ────────────────────────────────────────
 		if ( ! $user ) {
+			// Never create a WordPress account from an unverified email.
+			if ( ! $email_verified ) {
+				return new \WP_Error(
+					'enterprise_provision',
+					'Cannot create an account: the identity provider did not confirm your email address (email_verified).'
+				);
+			}
+
 			$username   = self::generate_username( $email );
 			$password   = wp_generate_password( 32, true, true );
 			$first_name = sanitize_text_field( $attributes['first_name'] ?? '' );
@@ -162,13 +210,29 @@ final class EnterpriseProvisioning {
 			if ( '' !== $idp_uid ) {
 				update_user_meta( $user_id, self::META_IDP_UID, $idp_uid );
 			}
+			if ( '' !== $idp_issuer ) {
+				update_user_meta( $user_id, self::META_IDP_ISSUER, $idp_issuer );
+			}
 		}
 
 		// Map IdP groups → WP roles (only for SSO-provisioned users).
 		self::apply_role_mapping( $user, $idp, (array) ( $attributes['groups'] ?? array() ) );
 
-		// Log the user in.
-		wp_set_auth_cookie( $user->ID, true );
+		// ── Session control ─────────────────────────────────────────────
+		// Record the SSO login timestamp for session timeout enforcement.
+		update_user_meta( $user->ID, '_enterprise_auth_sso_login_at', time() );
+
+		// If the IdP provided a session expiry (SAML SessionNotOnOrAfter),
+		// store it so the session-check hook can honour it.
+		$session_expires = $attributes['session_not_on_or_after'] ?? 0;
+		if ( $session_expires > 0 ) {
+			update_user_meta( $user->ID, '_enterprise_auth_session_expires', (int) $session_expires );
+		}
+
+		// Use a browser-session cookie (not persistent "remember me") so
+		// closing the browser ends the session. The `auth_cookie_expiration`
+		// filter in Core.php further caps the server-side lifetime.
+		wp_set_auth_cookie( $user->ID, false );
 		do_action( 'wp_login', $user->user_login, $user );
 
 		return true;

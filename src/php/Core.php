@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\Controllers\IdpController;
 use EnterpriseAuth\Plugin\Controllers\LoginRouter;
+use EnterpriseAuth\Plugin\Controllers\ScimController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcCallbackController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcLoginController;
 use EnterpriseAuth\Plugin\Controllers\PasskeyLoginController;
@@ -48,11 +49,17 @@ final class Core {
 				( new SamlAcsController() )->register_routes();
 				( new OidcLoginController() )->register_routes();
 				( new OidcCallbackController() )->register_routes();
+				( new ScimController() )->register_routes();
 			}
 		);
 
 		// Passkey login injection on wp-login.php.
 		( new LoginFlow() )->init();
+
+		// SSO session control — cap auth-cookie lifetime for SSO users
+		// and enforce SAML SessionNotOnOrAfter.
+		add_filter( 'auth_cookie_expiration', array( $this, 'cap_sso_session_lifetime' ), 10, 3 );
+		add_action( 'init', array( $this, 'enforce_sso_session_expiry' ) );
 
 		// Security headers on frontend.
 		add_action( 'send_headers', array( $this, 'send_security_headers' ) );
@@ -74,5 +81,91 @@ final class Core {
 				header( sprintf( '%s: %s', $name, $value ), false );
 			}
 		}
+	}
+
+	/**
+	 * Cap auth-cookie expiration for SSO-provisioned users.
+	 *
+	 * WordPress defaults to 48 hours (logged-in) or 14 days (remember-me).
+	 * For SSO users we cap it at the admin-configured session timeout
+	 * (default 8 hours) to limit exposure from stolen cookies.
+	 *
+	 * @param int  $length  Expiration length in seconds.
+	 * @param int  $user_id User ID.
+	 * @param bool $remember Whether "remember me" is checked.
+	 * @return int
+	 */
+	public function cap_sso_session_lifetime( int $length, int $user_id, bool $remember ): int {
+		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		if ( empty( $sso_provider ) ) {
+			// Local account — don't interfere with default WP behaviour.
+			return $length;
+		}
+
+		$settings       = SettingsController::read();
+		$timeout_hours  = $settings['session_timeout'] ?? 8;
+		$timeout_seconds = $timeout_hours * HOUR_IN_SECONDS;
+
+		return min( $length, $timeout_seconds );
+	}
+
+	/**
+	 * Force logout SSO users whose session has exceeded the configured
+	 * timeout or the SAML SessionNotOnOrAfter deadline.
+	 *
+	 * Runs on every `init` hook for logged-in users. The meta lookups are
+	 * single-key reads (auto-loaded), so the overhead is negligible.
+	 */
+	public function enforce_sso_session_expiry(): void {
+		if ( ! is_user_logged_in() ) {
+			return;
+		}
+
+		$user_id     = get_current_user_id();
+		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		if ( empty( $sso_provider ) ) {
+			return; // Local account.
+		}
+
+		$now      = time();
+		$login_at = (int) get_user_meta( $user_id, '_enterprise_auth_sso_login_at', true );
+
+		// Check admin-configured session timeout.
+		if ( $login_at > 0 ) {
+			$settings        = SettingsController::read();
+			$timeout_seconds = ( $settings['session_timeout'] ?? 8 ) * HOUR_IN_SECONDS;
+
+			if ( ( $now - $login_at ) > $timeout_seconds ) {
+				$this->force_sso_logout( $user_id );
+				return;
+			}
+		}
+
+		// Check IdP-mandated session expiry (SAML SessionNotOnOrAfter).
+		$session_expires = (int) get_user_meta( $user_id, '_enterprise_auth_session_expires', true );
+		if ( $session_expires > 0 && $now >= $session_expires ) {
+			$this->force_sso_logout( $user_id );
+			return;
+		}
+	}
+
+	/**
+	 * Destroy the WordPress session and redirect to the login page.
+	 */
+	private function force_sso_logout( int $user_id ): void {
+		// Clean up SSO session meta.
+		delete_user_meta( $user_id, '_enterprise_auth_sso_login_at' );
+		delete_user_meta( $user_id, '_enterprise_auth_session_expires' );
+
+		wp_logout();
+
+		$redirect = add_query_arg(
+			'ea_sso_error',
+			rawurlencode( 'Your SSO session has expired. Please log in again.' ),
+			wp_login_url()
+		);
+
+		wp_safe_redirect( $redirect );
+		exit;
 	}
 }

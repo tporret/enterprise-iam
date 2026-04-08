@@ -12,6 +12,7 @@ export default function App() {
 		lockdown_mode: true,
 		app_passwords: false,
 		role_ceiling: 'editor',
+		session_timeout: 8,
 	} );
 	const [ saving, setSaving ] = useState( false );
 	const [ loaded, setLoaded ] = useState( false );
@@ -126,6 +127,25 @@ export default function App() {
 								<option value="author">Author</option>
 								<option value="contributor">Contributor</option>
 								<option value="subscriber">Subscriber</option>
+							</select>
+						</div>
+						<div className="ea-card">
+							<h3 className="ea-card__title">SSO Session Timeout</h3>
+							<p className="ea-card__desc">
+								Maximum session duration for SSO-authenticated users. After this time, users must re-authenticate with their identity provider.
+							</p>
+							<select
+								className="ea-input"
+								value={ settings.session_timeout }
+								disabled={ saving }
+								onChange={ ( e ) => updateSetting( 'session_timeout', parseInt( e.target.value, 10 ) ) }
+							>
+								<option value={ 1 }>1 hour</option>
+								<option value={ 2 }>2 hours</option>
+								<option value={ 4 }>4 hours</option>
+								<option value={ 8 }>8 hours</option>
+								<option value={ 12 }>12 hours</option>
+								<option value={ 24 }>24 hours</option>
 							</select>
 						</div>
 						<PasskeySection showToast={ showToast } />

@@ -46,12 +46,16 @@ final class SettingsController {
 	private const OPTION_KEY = 'enterprise_auth_settings';
 
 	private const DEFAULTS = array(
-		'lockdown_mode' => true,
-		'app_passwords' => false,
-		'role_ceiling'  => 'editor',
+		'lockdown_mode'   => true,
+		'app_passwords'   => false,
+		'role_ceiling'    => 'editor',
+		'session_timeout' => 8,
 	);
 
 	private const ALLOWED_CEILINGS = array( 'editor', 'author', 'contributor', 'subscriber' );
+
+	/** Allowed SSO session timeout values in hours. */
+	private const ALLOWED_TIMEOUTS = array( 1, 2, 4, 8, 12, 24 );
 
 	/**
 	 * Only administrators may access these endpoints.
@@ -90,6 +94,13 @@ final class SettingsController {
 			$sanitized['role_ceiling'] = $current['role_ceiling'];
 		}
 
+		// SSO session timeout — must be one of the allowed hour values.
+		if ( isset( $params['session_timeout'] ) && in_array( (int) $params['session_timeout'], self::ALLOWED_TIMEOUTS, true ) ) {
+			$sanitized['session_timeout'] = (int) $params['session_timeout'];
+		} else {
+			$sanitized['session_timeout'] = $current['session_timeout'];
+		}
+
 		update_option( self::OPTION_KEY, $sanitized );
 
 		return new \WP_REST_Response( self::read(), 200 );
@@ -113,10 +124,15 @@ final class SettingsController {
 			? $raw['role_ceiling']
 			: self::DEFAULTS['role_ceiling'];
 
+		$timeout = isset( $raw['session_timeout'] ) && in_array( (int) $raw['session_timeout'], self::ALLOWED_TIMEOUTS, true )
+			? (int) $raw['session_timeout']
+			: self::DEFAULTS['session_timeout'];
+
 		return array(
-			'lockdown_mode' => isset( $raw['lockdown_mode'] ) ? (bool) $raw['lockdown_mode'] : self::DEFAULTS['lockdown_mode'],
-			'app_passwords' => isset( $raw['app_passwords'] ) ? (bool) $raw['app_passwords'] : self::DEFAULTS['app_passwords'],
-			'role_ceiling'  => $ceiling,
+			'lockdown_mode'   => isset( $raw['lockdown_mode'] ) ? (bool) $raw['lockdown_mode'] : self::DEFAULTS['lockdown_mode'],
+			'app_passwords'   => isset( $raw['app_passwords'] ) ? (bool) $raw['app_passwords'] : self::DEFAULTS['app_passwords'],
+			'role_ceiling'    => $ceiling,
+			'session_timeout' => $timeout,
 		);
 	}
 
@@ -137,11 +153,17 @@ final class SettingsController {
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',
 			),
-			'role_ceiling'  => array(
+			'role_ceiling'    => array(
 				'type'              => 'string',
 				'required'          => false,
 				'enum'              => array( 'editor', 'author', 'contributor', 'subscriber' ),
 				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'session_timeout' => array(
+				'type'              => 'integer',
+				'required'          => false,
+				'enum'              => array( 1, 2, 4, 8, 12, 24 ),
+				'sanitize_callback' => 'absint',
 			),
 		);
 	}

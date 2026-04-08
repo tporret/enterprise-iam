@@ -176,12 +176,21 @@ final class OidcCallbackController {
 			$sub = $oidc->getVerifiedClaims( 'sub' );
 			$sub = is_string( $sub ) ? $sub : '';
 
+			// Extract the canonical issuer identifier (iss claim).
+			$iss = $oidc->getVerifiedClaims( 'iss' );
+			$iss = is_string( $iss ) ? $iss : ( is_string( $issuer ) ? $issuer : '' );
+
+			// Check whether the IdP has verified the user's email address.
+			$email_verified = $oidc->getVerifiedClaims( 'email_verified' );
+
 			$attributes = array(
-				'email'      => sanitize_email( $email ),
-				'first_name' => sanitize_text_field( (string) $given_name ),
-				'last_name'  => sanitize_text_field( (string) $family_name ),
-				'groups'     => array_map( 'sanitize_text_field', $groups ),
-				'idp_uid'    => sanitize_text_field( $sub ),
+				'email'          => sanitize_email( $email ),
+				'first_name'     => sanitize_text_field( (string) $given_name ),
+				'last_name'      => sanitize_text_field( (string) $family_name ),
+				'groups'         => array_map( 'sanitize_text_field', $groups ),
+				'idp_uid'        => sanitize_text_field( $sub ),
+				'idp_issuer'     => esc_url_raw( $iss ),
+				'email_verified' => ( true === $email_verified || 'true' === $email_verified ),
 			);
 
 			// ── JIT provisioning and login ──────────────────────────────
