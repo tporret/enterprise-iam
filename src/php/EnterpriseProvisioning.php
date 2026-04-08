@@ -32,7 +32,27 @@ final class EnterpriseProvisioning {
 
 		$user = get_user_by( 'email', $email );
 
-		if ( ! $user ) {
+		if ( $user ) {
+			// Existing user — only allow SSO login if the account was
+			// originally provisioned via SSO from this same IdP.
+			// This prevents a malicious or misconfigured IdP from hijacking
+			// local (password-based) accounts by asserting their email.
+			$existing_provider = get_user_meta( $user->ID, '_enterprise_auth_sso_provider', true );
+
+			if ( empty( $existing_provider ) ) {
+				return new \WP_Error(
+					'enterprise_provision',
+					'A local account already exists with this email address. SSO login is not permitted for local accounts.'
+				);
+			}
+
+			if ( $existing_provider !== ( $idp['id'] ?? '' ) ) {
+				return new \WP_Error(
+					'enterprise_provision',
+					'This account is managed by a different identity provider.'
+				);
+			}
+		} else {
 			$username   = self::generate_username( $email );
 			$password   = wp_generate_password( 32, true, true );
 			$first_name = sanitize_text_field( $attributes['first_name'] ?? '' );
@@ -62,7 +82,7 @@ final class EnterpriseProvisioning {
 			update_user_meta( $user_id, '_enterprise_auth_sso_provider', $idp['id'] ?? '' );
 		}
 
-		// Map IdP groups → WP roles.
+		// Map IdP groups → WP roles (only for SSO-provisioned users).
 		self::apply_role_mapping( $user, $idp, (array) ( $attributes['groups'] ?? array() ) );
 
 		// Log the user in.
