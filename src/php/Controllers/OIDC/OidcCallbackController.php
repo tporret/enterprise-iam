@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\EnterpriseProvisioning;
 use EnterpriseAuth\Plugin\IdpManager;
-use Jumbojett\OpenIDConnectClient;
+use EnterpriseAuth\Plugin\OidcTransientClient;
 
 /**
  * OIDC Authorization Code Callback.
@@ -98,9 +98,10 @@ final class OidcCallbackController {
 
 		$idp_id = $state_data['idp_id'] ?? '';
 		$nonce  = $state_data['nonce'] ?? '';
+		$code_verifier = $state_data['code_verifier'] ?? '';
 		$idp    = IdpManager::find( $idp_id );
 
-		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'oidc' ) {
+		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'oidc' || '' === $nonce || '' === $code_verifier ) {
 			return $this->error_redirect( 'OIDC Identity Provider not found.' );
 		}
 
@@ -110,13 +111,20 @@ final class OidcCallbackController {
 			$client_id     = $idp['client_id'] ?? '';
 			$client_secret = $idp['client_secret'] ?? '';
 
-			$oidc = new OpenIDConnectClient( $issuer, $client_id, $client_secret );
+			$oidc = new OidcTransientClient( $issuer, $client_id, $client_secret );
+			$oidc->prime_session_store(
+				array(
+					'openid_connect_state'         => $state,
+					'openid_connect_nonce'         => $nonce,
+					'openid_connect_code_verifier' => $code_verifier,
+				)
+			);
 
 			$redirect_uri = rest_url( 'enterprise-auth/v1/oidc/callback' );
 			$oidc->setRedirectURL( $redirect_uri );
 
-			// Enable PKCE so the library sends the code_verifier from
-			// $_SESSION during the token exchange (RFC 7636).
+			// Enable PKCE so the library sends the transient-backed
+			// code_verifier during the token exchange (RFC 7636).
 			$oidc->setCodeChallengeMethod( 'S256' );
 
 			// Configure explicit provider endpoints if available so the
@@ -135,10 +143,6 @@ final class OidcCallbackController {
 			// Inject code and state into the superglobals the library reads.
 			$_REQUEST['code']  = $code;
 			$_REQUEST['state'] = $state;
-
-			// The library reads state/nonce from $_SESSION (set by
-			// OidcLoginController). The PHP session cookie carries them
-			// across the browser redirect from the IdP.
 
 			// Authenticate performs the token exchange and JWT verification
 			// (signature via JWKS, audience, expiry, nonce).
@@ -258,7 +262,7 @@ final class OidcCallbackController {
 			return null;
 		}
 
-		$transient_key = 'ea_oidc_state_' . sanitize_text_field( $state );
+		$transient_key = self::verification_transient_key( $state );
 		$state_raw     = get_transient( $transient_key );
 		delete_transient( $transient_key );
 
@@ -268,6 +272,14 @@ final class OidcCallbackController {
 
 		$state_data = json_decode( (string) $state_raw, true );
 		if ( ! is_array( $state_data ) ) {
+			return null;
+		}
+
+		if ( isset( $state_data['blog_id'] ) && (int) $state_data['blog_id'] !== get_current_blog_id() ) {
+			return null;
+		}
+
+		if ( isset( $state_data['state'] ) && (string) $state_data['state'] !== $state ) {
 			return null;
 		}
 
@@ -296,5 +308,12 @@ final class OidcCallbackController {
 		}
 
 		return sanitize_text_field( (string) $parsed_query[ $key ] );
+	}
+
+	/**
+	 * Blog-scoped transient key for OIDC verification state.
+	 */
+	private static function verification_transient_key( string $state ): string {
+		return 'ea_oidc_v_' . get_current_blog_id() . '_' . sanitize_text_field( $state );
 	}
 }

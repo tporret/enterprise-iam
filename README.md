@@ -1,6 +1,6 @@
 # Enterprise Auth - Identity and Access Management for WordPress
 
-Enterprise Auth is a WordPress plugin for enterprise-ready authentication and identity workflows.
+Enterprise Auth is a WordPress plugin for enterprise-ready authentication, provisioning, and Multisite-aware identity workflows.
 
 It combines:
 
@@ -9,17 +9,21 @@ It combines:
 - OpenID Connect (OIDC) support
 - Domain-based SSO routing
 - Just-In-Time user provisioning
+- Multisite-aware tenant isolation for identity metadata, re-auth cookies, and protocol transient state
 - Group-to-role mapping with wildcard fallback
 - Break-glass admin isolation
 - Immutable IdP UID account binding
 - Configurable JIT role ceiling
 - SCIM 2.0 user provisioning and deprovisioning
+- SCIM delete with site-level content steward reassignment and optional network-wide deprovision
 - SCIM group-to-role entitlement mapping
 - Custom attribute mapping per IdP with enterprise preset templates
 - SSO-only account lockdown (password login and password reset blocked for SSO-managed users)
 - Email change protection for SSO-managed users
 - Session expiry auto re-authentication (seamless redirect back to the correct IdP)
 - Force Sign-In Mode — per-IdP ForceAuthn (SAML) and prompt=login (OIDC)
+- First-link clean sweep for existing local accounts that become IdP-managed
+- Identity event audit hooks for SSO login and SCIM lifecycle actions
 - REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of dynamic responses
 
 ## Highlights
@@ -29,16 +33,20 @@ It combines:
 - SAML metadata endpoint and ACS flow
 - OIDC authorization and callback flow
 - Unified provisioning engine for SAML and OIDC
-- SCIM 2.0 endpoint with Bearer token auth and rate limiting
+- SCIM 2.0 endpoint with Bearer token auth, rate limiting, and production delete semantics
+- Multisite-safe `SiteMetaKeys` isolation for SSO / SCIM bindings, cookies, and transient state
 - React admin UI for provider management
 - Break-glass admin isolation — SSO cannot target administrator accounts
 - Strict account binding via immutable IdP UID (OIDC `sub` / SAML NameID)
 - Configurable JIT role ceiling to prevent privilege escalation
+- Capability-aware role hardening blocks privileged roles for standard tenant IdPs
 - Custom attribute mapping per IdP with one-click presets for Azure AD, Okta, Shibboleth, and more
 - SSO-only account lockdown — password login and password reset disabled for SSO-managed users
 - Email change protection — SSO-managed users cannot change their email address
 - Session expiry auto re-auth — expired sessions redirect transparently back to the user's IdP
 - Force Sign-In Mode — optional per-IdP setting to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
+- SCIM delete supports explicit content steward reassignment, fail-closed 409 responses, and optional network-scope deprovision on Multisite
+- Audit-friendly `ea_identity_event` hooks on SSO login and SCIM lifecycle actions
 - REST API cache-control hardening — `Cache-Control: no-store, no-cache, must-revalidate, private` on all `enterprise-auth/` REST responses to prevent web cache deception and poisoning attacks
 
 ## Requirements
@@ -56,6 +64,7 @@ It combines:
 2. Ensure `vendor/` and `build/` are present.
 3. Activate the plugin from WordPress admin.
 4. Configure providers in `WP Admin -> Enterprise Auth`.
+5. On Multisite, configure the SCIM Deprovision Steward on each site before enabling automated deprovisioning.
 
 ### Development install
 
@@ -120,6 +129,18 @@ Configure:
 
 Users are redirected through the OIDC Authorization Code flow and validated on callback.
 
+The plugin stores OIDC `state`, `nonce`, and `code_verifier` in short-lived, blog-scoped transients during the redirect flow. Callback verification does not depend on plugin-managed PHP sessions.
+
+## Multisite and Tenant Isolation
+
+On single-site installs, the plugin keeps its legacy key layout and routing behavior. On WordPress Multisite, Enterprise Auth adds explicit tenant isolation for identity state that would otherwise bleed across the shared network user table and browser cookie space.
+
+- SSO and SCIM identity bindings use site-scoped usermeta keys through `SiteMetaKeys`.
+- Seamless SSO re-auth uses a per-site last-IdP cookie to avoid cross-subdomain and cross-site bleed.
+- SAML request IDs, OIDC verification state, and WebAuthn challenge transients are blog-scoped.
+- SCIM provisioning can attach an existing network user to the current site instead of creating a duplicate global account.
+- SCIM network deprovision evaluates each site independently and applies per-site reassignment policy before removing memberships.
+
 ## Custom Attribute Mapping
 
 By default, the plugin uses a multi-format fallback chain for reading email, first name, and last name from IdP assertions (covering Azure AD URIs, Shibboleth OIDs, and standard short names simultaneously). When your IdP uses non-standard claim keys, you can override the defaults per provider.
@@ -183,6 +204,10 @@ A **Role Ceiling** setting (General tab) caps the maximum role that SSO/JIT prov
 
 This prevents a compromised or misconfigured IdP from granting `administrator` access to WordPress.
 
+### Privileged Role Guardrails
+
+Role assignment is capability-aware, not just name-aware. Roles that expose capabilities such as `manage_options`, `switch_themes`, or `manage_network` are blocked for standard tenant IdPs even if the textual role name would otherwise pass the ceiling check. This prevents custom elevated roles from bypassing a simple name-based allowlist.
+
 ## Provisioning Behaviour
 
 On successful SSO authentication, the plugin applies the following steps in order:
@@ -190,9 +215,11 @@ On successful SSO authentication, the plugin applies the following steps in orde
 1. **Break-glass check** — rejects SSO login for user ID 1 and any `administrator` account. These accounts must always log in locally (password or passkey).
 2. **Primary user lookup** — searches for an existing user by the IdP's immutable unique identifier stored in `_enterprise_auth_idp_uid` usermeta. This is the OIDC `sub` claim or the SAML `NameID`.
 3. **First-time binding** — if no UID match is found, falls back to email lookup. On a successful email match the IdP UID is stored for all future logins. If the stored UID does not match the incoming UID, the login is blocked (IdP spoofing prevention).
-4. **JIT creation** — if no matching user exists, creates a new WordPress account at `subscriber` level and stores both the IdP provider ID and UID.
-5. **Role mapping** — applies group-to-role mapping, capped at the configured Role Ceiling.
-6. **Login** — sets the auth cookie and fires `wp_login`.
+4. **First-link clean sweep** — when an existing local account becomes IdP-managed for the first time, the plugin revokes the local password, application passwords, and active sessions before finalizing the binding.
+5. **Multisite attach** — if a matching network user already exists but is not yet a member of the current site, the plugin attaches the user to the current site instead of creating a duplicate global account.
+6. **JIT creation** — if no matching user exists, creates a new WordPress account at `subscriber` level and stores both the IdP provider ID and UID.
+7. **Role mapping** — applies group-to-role mapping, blocked-capability checks, and the configured Role Ceiling.
+8. **Login** — sets the auth cookie, records the last-used IdP for the current site, emits `ea_identity_event`, and fires `wp_login`.
 
 ### Login Routing
 
@@ -212,6 +239,7 @@ The admin app now includes a **SCIM Provisioning** tab where administrators can:
 
 - View the absolute SCIM base URL to provide to the IdP
 - Generate a new SCIM token from the UI
+- Configure a site-level **Deprovision Steward** for safe content reassignment during SCIM delete operations
 - Copy the plaintext token exactly once (never retrievable later)
 
 Token generation uses `POST /wp-json/enterprise-auth/v1/settings/scim-token` and stores only a bcrypt hash server-side.
@@ -225,12 +253,31 @@ SCIM endpoints enforce a 300 requests/minute rate limit using WordPress transien
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/scim/v2/Users` | List users as a SCIM ListResponse. Supports `startIndex`, `count`, and basic `filter` (`userName eq "..."`) for connector validation/reconciliation. |
-| `POST` | `/scim/v2/Users` | Create a new user. Maps `userName` → email, `externalId` → immutable SCIM binding, `name` → first/last name. Returns 201 or 409 on conflict. |
+| `POST` | `/scim/v2/Users` | Create a new user. Maps `userName` → email, `externalId` → immutable SCIM binding, `name` → first/last name. On Multisite, an existing network user can be attached to the current site instead of duplicated. Returns 201 or 409 on conflict. |
 | `GET` | `/scim/v2/Users/{id}` | Fetch a single user by SCIM/WP user ID. Returns 404 when missing. |
 | `PUT` | `/scim/v2/Users/{id}` | Full replace of a user's attributes. |
-| `PATCH` | `/scim/v2/Users/{id}` | Partial update. Supports `active: false` to suspend (remove roles, set `is_scim_suspended` meta) and `active: true` to reactivate. Handles both standard and Azure AD PatchOp formats. |
+| `PATCH` | `/scim/v2/Users/{id}` | Partial update. Supports `active: false` to suspend (remove roles, set site-scoped SCIM suspension meta, destroy sessions) and `active: true` to reactivate. Handles both standard and Azure AD PatchOp formats. |
+| `DELETE` | `/scim/v2/Users/{id}` | Deprovision a user. On Multisite this removes the current-site membership and clears current-site identity bindings; on single-site it hard-deletes the user once reassignment is safe. Supports `?scope=network` on Multisite for network-wide deprovision. |
 
 Administrator accounts (user ID 1 and `administrator` role) are protected from SCIM modifications (HTTP 403).
+
+### Deprovisioning Policy
+
+The SCIM delete implementation is explicit and fail-closed.
+
+- On the current site, authored content is reassigned to the configured Deprovision Steward when available.
+- If no steward is configured, the plugin falls back deterministically to the lowest-ID eligible local administrator on that site.
+- If authored content exists and no valid reassignment target can be resolved, delete is rejected with HTTP 409 instead of proceeding partially.
+- On Multisite, `DELETE /Users/{id}?scope=network` preflights every site membership first. If any site has authored content and no valid reassignment target, or if any membership is protected, the entire network operation is rejected before memberships are removed.
+- Explicit network-scope deprovision sets a network-wide suspension flag so the user cannot continue authenticating after all site memberships are removed.
+
+### Audit Events
+
+Enterprise Auth emits `ea_identity_event` actions on successful SSO login and SCIM lifecycle operations.
+
+- `sso_login` is emitted after a successful SSO-authenticated WordPress login.
+- `scim_create`, `scim_update`, `scim_delete`, `scim_delete_rejected`, and `scim_delete_failed` are emitted for SCIM lifecycle activity.
+- SCIM delete events include request scope, reassignment plan, external identifier, and request metadata when available, making it straightforward to forward the event stream into SIEM or audit logging pipelines.
 
 ### Group Endpoints
 
@@ -244,7 +291,7 @@ Group role assignment uses the same mapping engine as SAML/OIDC (exact match →
 
 ### Suspension & Login Block
 
-When an IdP sends `PATCH` with `active: false`, the user's roles are removed and an `is_scim_suspended` meta flag is set. Suspended users are blocked from all login methods (password, passkey, SSO) with the message "Account suspended by Identity Provider."
+When an IdP sends `PATCH` with `active: false`, the user's roles are removed and a site-scoped SCIM suspension flag is set. Suspended users are blocked from all login methods (password, passkey, SSO) with the message "Account suspended by Identity Provider." Explicit Multisite network deprovision also sets a network-wide suspension flag so the account remains blocked even after all site memberships are removed.
 
 ## Main Endpoints
 
@@ -258,7 +305,8 @@ When an IdP sends `PATCH` with `active: false`, the user's roles are removed and
 - `GET|POST /wp-json/enterprise-auth/v1/passkeys/login`
 - `POST /wp-json/enterprise-auth/v1/settings/scim-token`
 - `GET|POST /wp-json/enterprise-auth/v1/scim/v2/Users`
-- `GET|PUT|PATCH /wp-json/enterprise-auth/v1/scim/v2/Users/{id}`
+- `GET|PUT|PATCH|DELETE /wp-json/enterprise-auth/v1/scim/v2/Users/{id}`
+- `DELETE /wp-json/enterprise-auth/v1/scim/v2/Users/{id}?scope=network` (Multisite only)
 - `GET|POST /wp-json/enterprise-auth/v1/scim/v2/Groups`
 - `PATCH /wp-json/enterprise-auth/v1/scim/v2/Groups/{id}`
 
@@ -278,7 +326,7 @@ SSO-managed users cannot change their email address from the WordPress profile s
 
 ### Session Expiry Auto Re-Authentication
 
-When a user authenticates via SSO, the plugin stores a `enterprise_auth_last_idp` cookie (90-day TTL, `HttpOnly`, `Secure`, `SameSite=Lax`) recording which IdP they used. When the SSO session expires:
+When a user authenticates via SSO, the plugin stores a per-site `enterprise_auth_last_idp` cookie (or `enterprise_auth_last_idp_{blog_id}` on Multisite) with a 90-day TTL, `HttpOnly`, `Secure`, `SameSite=Lax`, recording which IdP they used. When the SSO session expires:
 
 - `force_sso_logout()` clears the WP session and redirects the user directly to the IdP's SSO login endpoint (SAML or OIDC) rather than dropping them on `wp-login.php`.
 - The `login_init` hook additionally intercepts any `reauth=1` or `redirect_to`-bearing request to `wp-login.php` and redirects the user to their IdP automatically, skipping the login form entirely.
@@ -302,16 +350,21 @@ Enable with the **Force Re-Authentication** checkbox in each IdP's configuration
 | Immutable IdP UID binding | After first login, accounts are matched by `sub`/NameID, never by email alone |
 | IdP spoofing prevention | Mismatched UID on an existing bound account blocks the login |
 | Role ceiling | SSO and SCIM can never assign a role above the configured ceiling (default: `editor`) |
+| Capability-aware privileged role gating | Roles exposing privileged capabilities are blocked for standard tenant IdPs even when a custom role name would otherwise pass a simple ceiling check |
 | Local account protection | Local accounts on SSO-mapped domains are never redirected to the IdP |
 | SSO-only account lockdown | Password login and password reset blocked for all SSO-managed users |
 | Email change protection | SSO-managed users cannot change their email address |
-| Session expiry auto re-auth | Expired sessions redirect to the user's IdP; `enterprise_auth_last_idp` cookie enables seamless routing |
+| Session expiry auto re-auth | Expired sessions redirect to the user's IdP; the last-used IdP cookie is site-scoped on Multisite to prevent cross-site bleed |
 | Force Sign-In Mode | Optional per-IdP ForceAuthn (SAML) / prompt=login (OIDC) to bypass cached IdP sessions |
 | SCIM Bearer token auth | Bcrypt-hashed token verification on all SCIM endpoints |
 | SCIM one-time token display | Plaintext token is shown only at generation time and is never stored |
 | SCIM rate limiting | 300 requests/minute per window to prevent runaway syncs |
-| SCIM suspension login block | Deprovisioned users are blocked from all login methods |
-| OIDC state / nonce | Short-lived transients validated on every callback |
+| SCIM suspension login block | Site-scoped suspensions and explicit network-scope deprovision block all login methods |
+| SCIM deprovision fail-closed | Delete returns HTTP 409 when authored content cannot be reassigned safely |
+| Multisite tenant isolation | Site-scoped usermeta, cookies, and transient keys prevent cross-site identity bleed on networks |
+| OIDC state / nonce / verifier | Short-lived blog-scoped transients validated on every callback; no plugin-managed PHP session dependency |
+| First-link clean sweep | Existing local accounts lose legacy passwords, application passwords, and active sessions when they first become IdP-managed |
+| Identity audit events | `ea_identity_event` surfaces SSO login and SCIM lifecycle actions for downstream audit pipelines |
 | SAML signature validation | Handled by the OneLogin SAML toolkit |
 | WebAuthn challenges | Short-lived, server-side verified |
 

@@ -22,6 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *  - userinfo_endpoint (OIDC only)
  *  - domain_mapping (string[])
  *  - role_mapping   (array<string,string>)  IdP group → WP role
+ *  - super_tenant   (bool)                  Allows privileged role assignment
  *  - enabled        (bool)
  */
 final class IdpManager {
@@ -192,6 +193,7 @@ final class IdpManager {
 			'sso_url'                    => esc_url_raw( $raw['sso_url'] ?? '' ),
 			'domain_mapping'             => $domain_mapping,
 			'role_mapping'               => $role_mapping,
+			'super_tenant'               => ! empty( $raw['super_tenant'] ),
 			'enabled'                    => ! empty( $raw['enabled'] ),
 			'override_attribute_mapping' => ! empty( $raw['override_attribute_mapping'] ),
 			'custom_email_attr'          => sanitize_text_field( $raw['custom_email_attr'] ?? '' ),

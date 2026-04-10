@@ -62,6 +62,7 @@ final class SettingsController {
 		'app_passwords'   => false,
 		'role_ceiling'    => 'editor',
 		'session_timeout' => 8,
+		'deprovision_steward_user_id' => 0,
 	);
 
 	private const ALLOWED_CEILINGS = array( 'editor', 'author', 'contributor', 'subscriber' );
@@ -113,6 +114,13 @@ final class SettingsController {
 			$sanitized['session_timeout'] = $current['session_timeout'];
 		}
 
+		if ( isset( $params['deprovision_steward_user_id'] ) ) {
+			$candidate = absint( $params['deprovision_steward_user_id'] );
+			$sanitized['deprovision_steward_user_id'] = self::is_valid_steward_user_id( $candidate ) ? $candidate : 0;
+		} else {
+			$sanitized['deprovision_steward_user_id'] = (int) ( $current['deprovision_steward_user_id'] ?? self::DEFAULTS['deprovision_steward_user_id'] );
+		}
+
 		update_option( self::OPTION_KEY, $sanitized );
 
 		return new \WP_REST_Response( self::read(), 200 );
@@ -123,7 +131,7 @@ final class SettingsController {
 	/**
 	 * Read the consolidated settings option.
 	 *
-	 * @return array<string, bool>
+	 * @return array<string, mixed>
 	 */
 	public static function read(): array {
 		$raw = get_option( self::OPTION_KEY, array() );
@@ -140,12 +148,38 @@ final class SettingsController {
 			? (int) $raw['session_timeout']
 			: self::DEFAULTS['session_timeout'];
 
+		$steward_user_id = self::read_deprovision_steward_user_id();
+
 		return array(
 			'lockdown_mode'   => isset( $raw['lockdown_mode'] ) ? (bool) $raw['lockdown_mode'] : self::DEFAULTS['lockdown_mode'],
 			'app_passwords'   => isset( $raw['app_passwords'] ) ? (bool) $raw['app_passwords'] : self::DEFAULTS['app_passwords'],
 			'role_ceiling'    => $ceiling,
 			'session_timeout' => $timeout,
+			'deprovision_steward_user_id' => $steward_user_id,
+			'deprovision_steward_user'    => self::format_steward_user( $steward_user_id ),
+			'deprovision_steward_options' => self::get_steward_options(),
 		);
+	}
+
+	/**
+	 * Read the current site's configured deprovision steward user ID.
+	 */
+	public static function read_deprovision_steward_user_id(): int {
+		$candidate = self::read_raw_deprovision_steward_user_id();
+
+		return self::is_valid_steward_user_id( $candidate ) ? $candidate : self::DEFAULTS['deprovision_steward_user_id'];
+	}
+
+	/**
+	 * Read the raw configured deprovision steward user ID for the current site.
+	 */
+	public static function read_raw_deprovision_steward_user_id(): int {
+		$raw = get_option( self::OPTION_KEY, array() );
+		if ( ! is_array( $raw ) ) {
+			return self::DEFAULTS['deprovision_steward_user_id'];
+		}
+
+		return isset( $raw['deprovision_steward_user_id'] ) ? (int) $raw['deprovision_steward_user_id'] : self::DEFAULTS['deprovision_steward_user_id'];
 	}
 
 	/**
@@ -177,6 +211,85 @@ final class SettingsController {
 				'enum'              => array( 1, 2, 4, 8, 12, 24 ),
 				'sanitize_callback' => 'absint',
 			),
+			'deprovision_steward_user_id' => array(
+				'type'              => 'integer',
+				'required'          => false,
+				'sanitize_callback' => 'absint',
+			),
+		);
+	}
+
+	/**
+	 * Check whether a user is eligible to act as the site's content steward.
+	 */
+	private static function is_valid_steward_user_id( int $user_id ): bool {
+		if ( $user_id <= 0 || 1 === $user_id || is_super_admin( $user_id ) ) {
+			return false;
+		}
+
+		$user = get_userdata( $user_id );
+		if ( ! ( $user instanceof \WP_User ) ) {
+			return false;
+		}
+
+		if ( is_multisite() && ! is_user_member_of_blog( $user_id, get_current_blog_id() ) ) {
+			return false;
+		}
+
+		return user_can( $user, 'edit_posts' );
+	}
+
+	/**
+	 * Return the current site's eligible content-steward options.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function get_steward_options(): array {
+		$args = array(
+			'fields'  => 'all',
+			'orderby' => 'display_name',
+			'order'   => 'ASC',
+		);
+
+		if ( is_multisite() ) {
+			$args['blog_id'] = get_current_blog_id();
+		}
+
+		$options = array();
+		foreach ( get_users( $args ) as $user ) {
+			if ( ! ( $user instanceof \WP_User ) || ! self::is_valid_steward_user_id( $user->ID ) ) {
+				continue;
+			}
+
+			$options[] = array(
+				'id'    => $user->ID,
+				'label' => sprintf( '%s (%s, ID %d)', $user->display_name ?: $user->user_login, $user->user_email ?: $user->user_login, $user->ID ),
+			);
+		}
+
+		return $options;
+	}
+
+	/**
+	 * Format the configured steward for the admin UI.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private static function format_steward_user( int $user_id ): ?array {
+		if ( ! self::is_valid_steward_user_id( $user_id ) ) {
+			return null;
+		}
+
+		$user = get_userdata( $user_id );
+		if ( ! ( $user instanceof \WP_User ) ) {
+			return null;
+		}
+
+		return array(
+			'id'           => $user->ID,
+			'user_login'   => $user->user_login,
+			'display_name' => $user->display_name,
+			'user_email'   => $user->user_email,
 		);
 	}
 

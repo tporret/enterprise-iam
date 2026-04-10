@@ -1,13 +1,14 @@
 import { useState, useRef, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
-export default function ScimSettings( { showToast } ) {
+export default function ScimSettings( { showToast, settings, saving, updateSetting } ) {
 	const [ generating, setGenerating ] = useState( false );
 	const [ token, setToken ] = useState( null );
 	const [ baseUrl, setBaseUrl ] = useState(
 		window.enterpriseAuth.restUrl + 'scim/v2/'
 	);
 	const tokenRef = useRef( null );
+	const stewardOptions = settings?.deprovision_steward_options ?? [];
 
 	const generateToken = useCallback( async () => {
 		setGenerating( true );
@@ -110,6 +111,36 @@ export default function ScimSettings( { showToast } ) {
 			</div>
 
 			<div className="ea-card ea-card--wide">
+				<h3 className="ea-card__title">Deprovision Steward</h3>
+				<p className="ea-card__desc">
+					When SCIM deprovisions a user who still owns content on this
+					site, Enterprise Auth reassigns that content to this steward.
+					If no steward is configured, the plugin falls back to a
+					deterministic local administrator. If no valid steward is
+					available, the delete request fails with a 409 response.
+				</p>
+				<select
+					className="ea-input"
+					value={ settings?.deprovision_steward_user_id ?? 0 }
+					disabled={ saving }
+					onChange={ ( event ) => updateSetting( 'deprovision_steward_user_id', parseInt( event.target.value, 10 ) ) }
+				>
+					<option value={ 0 }>
+						Auto-resolve from local administrators
+					</option>
+					{ stewardOptions.map( ( option ) => (
+						<option key={ option.id } value={ option.id }>
+							{ option.label }
+						</option>
+					) ) }
+				</select>
+				<p className="ea-card__desc">
+					Network deprovision mode evaluates this policy independently on
+					each site before removing memberships.
+				</p>
+			</div>
+
+			<div className="ea-card ea-card--wide">
 				<h3 className="ea-card__title">Supported Endpoints</h3>
 				<p className="ea-card__desc">
 					These SCIM 2.0 endpoints are available for your IdP
@@ -140,6 +171,16 @@ export default function ScimSettings( { showToast } ) {
 							<td>
 								Suspend / reactivate (active flag)
 							</td>
+						</tr>
+						<tr>
+							<td><code>DELETE</code></td>
+							<td><code>/Users/&#123;id&#125;</code></td>
+							<td>Remove the user from the current site</td>
+						</tr>
+						<tr>
+							<td><code>DELETE</code></td>
+							<td><code>/Users/&#123;id&#125;?scope=network</code></td>
+							<td>Deprovision the user across every site in the network</td>
 						</tr>
 						<tr>
 							<td><code>POST</code></td>

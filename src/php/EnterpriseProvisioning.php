@@ -23,6 +23,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class EnterpriseProvisioning {
 
 	/**
+	 * Capabilities that must never be granted through standard tenant SSO.
+	 */
+	private const BLOCKED_ROLE_CAPABILITIES = array(
+		'manage_options',
+		'switch_themes',
+		'manage_network',
+	);
+
+	/**
 	 * Ordered role hierarchy from highest to lowest privilege.
 	 * Used to enforce the role ceiling.
 	 */
@@ -122,10 +131,8 @@ final class EnterpriseProvisioning {
 				// Bind the immutable UID and issuer now.
 				$stored_uid = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );
 				if ( '' === $stored_uid ) {
-					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
-					if ( '' !== $idp_issuer ) {
-						update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
-					}
+					self::clean_sweep_legacy_access( $user->ID );
+					self::bind_user_to_idp( $user->ID, $idp_id, $idp_uid, $idp_issuer );
 				} elseif ( $stored_uid !== $idp_uid ) {
 					// UID mismatch — possible IdP spoofing.
 					return new \WP_Error(
@@ -236,12 +243,10 @@ final class EnterpriseProvisioning {
 				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
 
 				// Bind site-scoped SSO identity meta for this blog.
-				update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), $idp_id );
-				if ( '' !== $idp_uid ) {
-					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
-				}
-				if ( '' !== $idp_issuer ) {
-					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
+				$should_clean_sweep = self::should_clean_sweep_before_binding( $user->ID );
+				self::bind_user_to_idp( $user->ID, $idp_id, $idp_uid, $idp_issuer );
+				if ( $should_clean_sweep ) {
+					self::clean_sweep_legacy_access( $user->ID );
 				}
 			} else {
 				$username   = self::generate_username( $email );
@@ -273,13 +278,7 @@ final class EnterpriseProvisioning {
 				}
 
 				$user = get_user_by( 'id', $user_id );
-				update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), $idp_id );
-				if ( '' !== $idp_uid ) {
-					update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
-				}
-				if ( '' !== $idp_issuer ) {
-					update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
-				}
+				self::bind_user_to_idp( $user_id, $idp_id, $idp_uid, $idp_issuer );
 			}
 		}
 
@@ -308,18 +307,27 @@ final class EnterpriseProvisioning {
 		$idp_id = $idp['id'] ?? '';
 		if ( '' !== $idp_id && ! headers_sent() ) {
 			setcookie(
-				'enterprise_auth_last_idp',
+				self::last_idp_cookie_name(),
 				$idp_id,
 				array(
 					'expires'  => time() + ( 90 * DAY_IN_SECONDS ),
 					'path'     => COOKIEPATH,
-					'domain'   => COOKIE_DOMAIN,
 					'secure'   => is_ssl(),
 					'httponly'  => true,
 					'samesite' => 'Lax',
 				)
 			);
 		}
+
+		self::emit_identity_event(
+			'sso_login',
+			array(
+				'user_id'      => $user->ID,
+				'idp_id'       => $idp_id,
+				'idp_protocol' => $idp['protocol'] ?? '',
+				'idp_issuer'   => $idp_issuer,
+			)
+		);
 
 		return true;
 	}
@@ -382,20 +390,25 @@ final class EnterpriseProvisioning {
 	 * privilege escalation via rogue IdP payloads.
 	 */
 	private static function apply_role_mapping( \WP_User $user, array $idp, array $groups ): void {
-		$mapping = $idp['role_mapping'] ?? array();
+		$mapping = self::decorate_role_mapping(
+			(array) ( $idp['role_mapping'] ?? array() ),
+			self::is_super_tenant_idp( $idp )
+		);
 
 		if ( empty( $mapping ) ) {
 			return;
 		}
 
-		$resolved_role = self::resolve_role_from_groups( $mapping, $groups );
+		$role_definition = self::resolve_role_definition_from_groups( $mapping, $groups );
 
-		if ( null === $resolved_role ) {
+		if ( null === $role_definition ) {
 			return;
 		}
 
-		// Enforce the role ceiling.
-		$resolved_role = self::cap_role( $resolved_role );
+		$resolved_role = self::cap_role( $role_definition['role'], (bool) $role_definition['super_tenant'] );
+		if ( null === $resolved_role ) {
+			return;
+		}
 
 		$user->set_role( $resolved_role );
 	}
@@ -413,8 +426,8 @@ final class EnterpriseProvisioning {
 		// Aggregate role mappings across all configured IdPs.
 		$mapping = array();
 		foreach ( IdpManager::all() as $idp ) {
-			foreach ( ( $idp['role_mapping'] ?? array() ) as $group => $role ) {
-				$mapping[ $group ] = $role;
+			foreach ( self::decorate_role_mapping( (array) ( $idp['role_mapping'] ?? array() ), self::is_super_tenant_idp( $idp ) ) as $group => $definition ) {
+				$mapping[ $group ] = $definition;
 			}
 		}
 
@@ -422,31 +435,54 @@ final class EnterpriseProvisioning {
 			return;
 		}
 
-		$resolved_role = self::resolve_role_from_groups( $mapping, $groups );
+		$role_definition = self::resolve_role_definition_from_groups( $mapping, $groups );
 
+		if ( null === $role_definition ) {
+			return;
+		}
+
+		$resolved_role = self::cap_role( $role_definition['role'], (bool) $role_definition['super_tenant'] );
 		if ( null === $resolved_role ) {
 			return;
 		}
 
-		$resolved_role = self::cap_role( $resolved_role );
 		$user->set_role( $resolved_role );
 	}
 
 	/**
-	 * Resolve a WordPress role from group names using a mapping table.
+	 * Decorate a role mapping table with the IdP's privilege context.
 	 *
-	 * @param array<string,string> $mapping IdP group → WP role.
-	 * @param string[]             $groups  Group names to match.
-	 * @return string|null The resolved WP role, or null if no match.
+	 * @param array<string,string> $mapping
+	 * @return array<string, array{role: string, super_tenant: bool}>
 	 */
-	private static function resolve_role_from_groups( array $mapping, array $groups ): ?string {
+	private static function decorate_role_mapping( array $mapping, bool $super_tenant ): array {
+		$decorated = array();
+
+		foreach ( $mapping as $group => $role ) {
+			$decorated[ (string) $group ] = array(
+				'role'         => sanitize_text_field( (string) $role ),
+				'super_tenant' => $super_tenant,
+			);
+		}
+
+		return $decorated;
+	}
+
+	/**
+	 * Resolve a WordPress role definition from group names using a mapping table.
+	 *
+	 * @param array<string, array{role: string, super_tenant: bool}> $mapping
+	 * @param string[]                                               $groups
+	 * @return array{role: string, super_tenant: bool}|null
+	 */
+	private static function resolve_role_definition_from_groups( array $mapping, array $groups ): ?array {
 		$resolved_role = null;
 
 		foreach ( $groups as $group ) {
 			$group_lower = strtolower( (string) $group );
-			foreach ( $mapping as $idp_group => $wp_role ) {
+			foreach ( $mapping as $idp_group => $definition ) {
 				if ( strtolower( $idp_group ) === $group_lower ) {
-					$resolved_role = $wp_role;
+					$resolved_role = $definition;
 					break 2;
 				}
 			}
@@ -464,17 +500,20 @@ final class EnterpriseProvisioning {
 	 * Cap a role at the configured role ceiling.
 	 *
 	 * If the requested role is more privileged than the ceiling, return the
-	 * ceiling role instead. Unknown roles are passed through unchanged.
+	 * ceiling role instead. Unknown or blocked roles are rejected.
 	 */
-	private static function cap_role( string $role ): string {
+	private static function cap_role( string $role, bool $super_tenant = false ): ?string {
+		$role_object = get_role( $role );
+		if ( null === $role_object ) {
+			return null;
+		}
+
+		if ( self::role_has_blocked_capabilities( $role_object->capabilities ) ) {
+			return $super_tenant ? $role : null;
+		}
+
 		$settings = SettingsController::read();
 		$ceiling  = $settings['role_ceiling'] ?? 'editor';
-
-		// Multisite: never grant 'administrator' via SSO/SCIM to prevent
-		// Site Admin escalation toward network-level (Super Admin) privileges.
-		if ( is_multisite() && 'administrator' === $role ) {
-			return $ceiling;
-		}
 
 		$role_level    = self::ROLE_HIERARCHY[ $role ] ?? 0;
 		$ceiling_level = self::ROLE_HIERARCHY[ $ceiling ] ?? self::ROLE_HIERARCHY['editor'];
@@ -484,6 +523,28 @@ final class EnterpriseProvisioning {
 		}
 
 		return $role;
+	}
+
+	/**
+	 * Check whether a target role exposes privileged administrative capabilities.
+	 *
+	 * @param array<string, bool> $capabilities
+	 */
+	private static function role_has_blocked_capabilities( array $capabilities ): bool {
+		foreach ( self::BLOCKED_ROLE_CAPABILITIES as $capability ) {
+			if ( ! empty( $capabilities[ $capability ] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Determine whether the IdP is allowed to grant privileged roles.
+	 */
+	private static function is_super_tenant_idp( array $idp ): bool {
+		return ! empty( $idp['super_tenant'] );
 	}
 
 	/**
@@ -502,5 +563,110 @@ final class EnterpriseProvisioning {
 		}
 
 		return $base . $i;
+	}
+
+	/**
+	 * Per-blog cookie name used for seamless SSO re-authentication.
+	 */
+	private static function last_idp_cookie_name(): string {
+		if ( ! is_multisite() ) {
+			return 'enterprise_auth_last_idp';
+		}
+
+		return 'enterprise_auth_last_idp_' . get_current_blog_id();
+	}
+
+	/**
+	 * Bind a user to an IdP on the current site.
+	 */
+	private static function bind_user_to_idp( int $user_id, string $idp_id, string $idp_uid, string $idp_issuer ): void {
+		update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), $idp_id );
+
+		if ( '' !== $idp_uid ) {
+			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
+		}
+
+		if ( '' !== $idp_issuer ) {
+			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
+		}
+	}
+
+	/**
+	 * Whether the user is being bound to any identity system for the first time.
+	 */
+	private static function should_clean_sweep_before_binding( int $user_id ): bool {
+		$all_meta = get_user_meta( $user_id );
+		if ( ! is_array( $all_meta ) ) {
+			return true;
+		}
+
+		foreach ( $all_meta as $meta_key => $values ) {
+			if ( ! self::is_identity_binding_meta_key( (string) $meta_key ) ) {
+				continue;
+			}
+
+			foreach ( (array) $values as $value ) {
+				if ( '' !== (string) $value ) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check whether a usermeta key represents an identity binding.
+	 */
+	private static function is_identity_binding_meta_key( string $meta_key ): bool {
+		if ( in_array( $meta_key, array( SiteMetaKeys::SSO_PROVIDER, SiteMetaKeys::IDP_UID, SiteMetaKeys::SCIM_ID ), true ) ) {
+			return true;
+		}
+
+		return 1 === preg_match( '/^_ea_\d+_(?:sso_provider|idp_uid|scim_id)$/', $meta_key );
+	}
+
+	/**
+	 * Remove legacy local access when an existing account becomes IdP-managed.
+	 */
+	private static function clean_sweep_legacy_access( int $user_id ): void {
+		wp_set_password( wp_generate_password( 64, true, true ), $user_id );
+
+		if ( class_exists( '\WP_Application_Passwords' ) && method_exists( '\WP_Application_Passwords', 'delete_all_application_passwords' ) ) {
+			\WP_Application_Passwords::delete_all_application_passwords( $user_id );
+		}
+
+		delete_user_meta( $user_id, '_application_passwords' );
+
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->usermeta} WHERE user_id = %d AND (meta_key LIKE %s OR meta_key LIKE %s)",
+				$user_id,
+				'%app_password%',
+				'%application_password%'
+			)
+		);
+
+		\WP_Session_Tokens::get_instance( $user_id )->destroy_all();
+	}
+
+	/**
+	 * Emit an auditable identity event.
+	 *
+	 * @param array<string, mixed> $context
+	 */
+	private static function emit_identity_event( string $event, array $context = array() ): void {
+		do_action(
+			'ea_identity_event',
+			$event,
+			array_merge(
+				array(
+					'blog_id' => get_current_blog_id(),
+				),
+				$context
+			)
+		);
 	}
 }

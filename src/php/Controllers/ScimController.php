@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\SiteMetaKeys;
+use EnterpriseAuth\Plugin\SettingsController;
 
 /**
  * SCIM 2.0 Provisioning Endpoint.
@@ -24,6 +25,8 @@ final class ScimController {
 	private const NAMESPACE    = 'enterprise-auth/v1';
 	private const TOKEN_KEY    = 'enterprise_iam_scim_token';
 	private const RATE_LIMIT   = 300; // requests per minute
+	private const DEPROVISION_SCOPE_SITE = 'site';
+	private const DEPROVISION_SCOPE_NETWORK = 'network';
 
 	/**
 	 * Check whether a user was provisioned via SCIM on the current site.
@@ -116,12 +119,20 @@ final class ScimController {
 					'methods'             => \WP_REST_Server::DELETABLE,
 					'callback'            => array( $this, 'delete_user' ),
 					'permission_callback' => array( $this, 'authenticate_scim' ),
+					'args'                => array(
+						'scope' => array(
+							'type'              => 'string',
+							'required'          => false,
+							'enum'              => array( self::DEPROVISION_SCOPE_SITE, self::DEPROVISION_SCOPE_NETWORK ),
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+					),
 				),
 			)
 		);
 	}
 
-	// ── Route callbacks (stubs — 501 until user-schema mapping is built) ─
+	// ── Route callbacks ────────────────────────────────────────────────
 
 	public function list_users( \WP_REST_Request $request ): \WP_REST_Response {
 		$rate_error = $this->check_rate_limit();
@@ -231,6 +242,85 @@ final class ScimController {
 			) );
 		}
 
+		// Multisite: if the user exists globally but is not yet a member of
+		// this blog, attach them to the current tenant instead of trying to
+		// create a duplicate global user record.
+		if ( $existing && ! self::is_on_current_blog( $existing->ID ) ) {
+			if ( 1 === $existing->ID || is_super_admin( $existing->ID ) ) {
+				return self::scim_error_response( new \WP_Error(
+					'scim_forbidden',
+					'Administrator accounts cannot be provisioned via SCIM.',
+					array( 'status' => 403 )
+				) );
+			}
+
+			$added = add_user_to_blog( get_current_blog_id(), $existing->ID, 'subscriber' );
+			if ( is_wp_error( $added ) ) {
+				return self::scim_error_response( new \WP_Error(
+					'scim_internal',
+					'Failed to attach existing user to this site: ' . $added->get_error_message(),
+					array( 'status' => 500 )
+				) );
+			}
+
+			$display = trim( "$given_name $family_name" );
+			if ( '' === $display ) {
+				$display = $existing->display_name ?: $existing->user_login;
+			}
+
+			$result = wp_update_user(
+				array(
+					'ID'           => $existing->ID,
+					'user_email'   => $user_name,
+					'first_name'   => $given_name,
+					'last_name'    => $family_name,
+					'display_name' => $display,
+				)
+			);
+
+			if ( is_wp_error( $result ) ) {
+				return self::scim_error_response( new \WP_Error(
+					'scim_internal',
+					'Failed to update attached user: ' . $result->get_error_message(),
+					array( 'status' => 500 )
+				) );
+			}
+
+			$user = get_user_by( 'id', $existing->ID );
+			if ( ! $user ) {
+				return self::scim_error_response( new \WP_Error(
+					'scim_internal',
+					'Attached user could not be reloaded.',
+					array( 'status' => 500 )
+				) );
+			}
+
+			if ( ! $active ) {
+				$user->set_role( '' );
+				update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), 'true' );
+				\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
+			} else {
+				$user->set_role( 'subscriber' );
+				delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
+				self::set_network_scim_suspended( $user->ID, false );
+			}
+
+			if ( '' !== $external_id ) {
+				update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), $external_id );
+			}
+			update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), 'scim' );
+			self::emit_identity_event(
+				'scim_create',
+				array(
+					'user_id'     => $user->ID,
+					'external_id' => $external_id,
+					'mode'        => 'attach_existing',
+				)
+			);
+
+			return new \WP_REST_Response( self::format_scim_user( $user ), 201 );
+		}
+
 		// ── Create the WordPress user ───────────────────────────────────
 		$login   = self::generate_username( $user_name );
 		$display = trim( "$given_name $family_name" );
@@ -264,7 +354,24 @@ final class ScimController {
 		}
 		update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), 'scim' );
 
+		if ( ! $active ) {
+			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), 'true' );
+		} else {
+			delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
+			self::set_network_scim_suspended( $user_id, false );
+		}
+
 		$user = get_user_by( 'id', $user_id );
+		if ( $user ) {
+			self::emit_identity_event(
+				'scim_create',
+				array(
+					'user_id'     => $user->ID,
+					'external_id' => $external_id,
+					'mode'        => 'create',
+				)
+			);
+		}
 
 		return new \WP_REST_Response( self::format_scim_user( $user ), 201 );
 	}
@@ -378,6 +485,7 @@ final class ScimController {
 			\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
 		} else {
 			delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
+			self::set_network_scim_suspended( $user->ID, false );
 		}
 
 		if ( '' !== $external_id ) {
@@ -385,6 +493,16 @@ final class ScimController {
 		}
 
 		$user = get_user_by( 'id', $user->ID );
+		if ( $user ) {
+			self::emit_identity_event(
+				'scim_update',
+				array(
+					'user_id'     => $user->ID,
+					'external_id' => $external_id,
+					'method'      => 'replace',
+				)
+			);
+		}
 
 		return new \WP_REST_Response( self::format_scim_user( $user ), 200 );
 	}
@@ -453,6 +571,7 @@ final class ScimController {
 					// Reactivate: restore default role and clear the flag.
 					$user->set_role( 'subscriber' );
 					delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
+					self::set_network_scim_suspended( $user->ID, false );
 				}
 			}
 
@@ -470,12 +589,22 @@ final class ScimController {
 				} else {
 					$user->set_role( 'subscriber' );
 					delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
+					self::set_network_scim_suspended( $user->ID, false );
 				}
 			}
 		}
 
 		// Refresh user object after modifications.
 		$user = get_user_by( 'id', $user->ID );
+		if ( $user ) {
+			self::emit_identity_event(
+				'scim_update',
+				array(
+					'user_id' => $user->ID,
+					'method'  => 'patch',
+				)
+			);
+		}
 
 		return new \WP_REST_Response( self::format_scim_user( $user ), 200 );
 	}
@@ -485,7 +614,265 @@ final class ScimController {
 		if ( is_wp_error( $rate_error ) ) {
 			return self::scim_error_response( $rate_error );
 		}
-		return self::not_implemented();
+
+		$wp_user_id = (int) $request->get_param( 'id' );
+		$user       = get_user_by( 'id', $wp_user_id );
+
+		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
+			return self::scim_error_response( new \WP_Error(
+				'scim_not_found',
+				sprintf( 'User %d not found.', $wp_user_id ),
+				array( 'status' => 404 )
+			) );
+		}
+
+		$scope       = self::DEPROVISION_SCOPE_NETWORK === $request->get_param( 'scope' ) ? self::DEPROVISION_SCOPE_NETWORK : self::DEPROVISION_SCOPE_SITE;
+		$external_id = (string) get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), true );
+		$audit_base  = array_merge(
+			self::build_delete_request_context( $request, $scope ),
+			array(
+				'user_id'     => $user->ID,
+				'external_id' => $external_id,
+			)
+		);
+
+		if ( self::is_protected_account( $user->ID, (array) $user->roles ) ) {
+			self::emit_identity_event(
+				'scim_delete_rejected',
+				array_merge(
+					$audit_base,
+					array(
+						'reason' => 'protected_account',
+						'roles'  => array_values( (array) $user->roles ),
+					)
+				)
+			);
+
+			return self::scim_error_response( new \WP_Error(
+				'scim_forbidden',
+				'Administrator accounts cannot be managed via SCIM.',
+				array( 'status' => 403 )
+			) );
+		}
+
+		if ( self::DEPROVISION_SCOPE_NETWORK === $scope ) {
+			if ( ! is_multisite() ) {
+				self::emit_identity_event(
+					'scim_delete_rejected',
+					array_merge(
+						$audit_base,
+						array(
+							'reason' => 'network_scope_requires_multisite',
+						)
+					)
+				);
+
+				return self::scim_error_response( new \WP_Error(
+					'scim_bad_request',
+					'Network deprovision mode requires WordPress Multisite.',
+					array( 'status' => 400 )
+				) );
+			}
+
+			$network_plan = self::build_network_deprovision_plan( $user->ID );
+			if ( ! empty( $network_plan['protected_blogs'] ) ) {
+				self::emit_identity_event(
+					'scim_delete_rejected',
+					array_merge(
+						$audit_base,
+						array(
+							'reason'          => 'protected_network_membership',
+							'protected_blogs' => $network_plan['protected_blogs'],
+						)
+					)
+				);
+
+				return self::scim_error_response( new \WP_Error(
+					'scim_forbidden',
+					'Network deprovision cannot manage administrator memberships.',
+					array( 'status' => 403 )
+				) );
+			}
+
+			if ( ! empty( $network_plan['conflicts'] ) ) {
+				self::emit_identity_event(
+					'scim_delete_rejected',
+					array_merge(
+						$audit_base,
+						array(
+							'reason'           => 'missing_reassignment_target',
+							'conflict_blogs'   => $network_plan['conflicts'],
+							'blog_operations'  => $network_plan['blog_operations'],
+						)
+					)
+				);
+
+				return self::scim_error_response( new \WP_Error(
+					'scim_conflict',
+					'Network deprovision requires a valid reassignment target on every site that still has authored content.',
+					array( 'status' => 409 )
+				) );
+			}
+
+			$completed_blog_ids = array();
+			foreach ( $network_plan['blog_operations'] as $site_plan ) {
+				switch_to_blog( (int) $site_plan['blog_id'] );
+				$removed = remove_user_from_blog( $user->ID, (int) $site_plan['blog_id'], (int) $site_plan['reassign_user_id'] );
+				if ( is_wp_error( $removed ) ) {
+					restore_current_blog();
+					self::emit_identity_event(
+						'scim_delete_failed',
+						array_merge(
+							$audit_base,
+							array(
+								'reason'              => 'remove_user_from_blog_failed',
+								'completed_blog_ids'  => $completed_blog_ids,
+								'failed_blog_id'      => (int) $site_plan['blog_id'],
+								'failed_blog_message' => $removed->get_error_message(),
+							)
+						)
+					);
+
+					return self::scim_error_response( new \WP_Error(
+						'scim_internal',
+						'Failed to remove user from site ' . (int) $site_plan['blog_id'] . ': ' . $removed->get_error_message(),
+						array( 'status' => 500 )
+					) );
+				}
+
+				self::clear_site_identity_binding( $user->ID, true );
+				restore_current_blog();
+				$completed_blog_ids[] = (int) $site_plan['blog_id'];
+			}
+
+			self::set_network_scim_suspended( $user->ID, true );
+			\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
+
+			self::emit_identity_event(
+				'scim_delete',
+				array_merge(
+					$audit_base,
+					array(
+						'mode'               => 'remove_from_network',
+						'global_suspended'   => true,
+						'blog_operations'    => $network_plan['blog_operations'],
+						'completed_blog_ids' => $completed_blog_ids,
+						'remaining_blog_ids' => self::get_user_blog_ids( $user->ID ),
+					)
+				)
+			);
+
+			return new \WP_REST_Response( null, 204 );
+		}
+
+		$site_plan = self::build_current_site_deprovision_plan( $user->ID );
+		if ( $site_plan['content_summary']['total'] > 0 && 0 === $site_plan['reassign_user_id'] ) {
+			self::emit_identity_event(
+				'scim_delete_rejected',
+				array_merge(
+					$audit_base,
+					array(
+						'reason'        => 'missing_reassignment_target',
+						'site_plan'     => $site_plan,
+					)
+				)
+			);
+
+			return self::scim_error_response( new \WP_Error(
+				'scim_conflict',
+				'Cannot safely delete this user because no reassignment target is available for authored content on this site.',
+				array( 'status' => 409 )
+			) );
+		}
+
+		if ( is_multisite() ) {
+			$removed = remove_user_from_blog( $user->ID, get_current_blog_id(), (int) $site_plan['reassign_user_id'] );
+			if ( is_wp_error( $removed ) ) {
+				self::emit_identity_event(
+					'scim_delete_failed',
+					array_merge(
+						$audit_base,
+						array(
+							'reason'              => 'remove_user_from_blog_failed',
+							'failed_blog_id'      => get_current_blog_id(),
+							'failed_blog_message' => $removed->get_error_message(),
+							'site_plan'           => $site_plan,
+						)
+					)
+				);
+
+				return self::scim_error_response( new \WP_Error(
+					'scim_internal',
+					'Failed to remove user from this site: ' . $removed->get_error_message(),
+					array( 'status' => 500 )
+				) );
+			}
+
+			self::clear_site_identity_binding( $user->ID, true );
+			$remaining_blog_ids = self::get_user_blog_ids( $user->ID );
+			$global_suspended  = false;
+			if ( empty( $remaining_blog_ids ) ) {
+				self::set_network_scim_suspended( $user->ID, true );
+				$global_suspended = true;
+			}
+
+			\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
+			self::emit_identity_event(
+				'scim_delete',
+				array_merge(
+					$audit_base,
+					array_merge(
+						$site_plan,
+						array(
+							'mode'               => 'remove_from_blog',
+							'global_suspended'   => $global_suspended,
+							'remaining_blog_ids' => $remaining_blog_ids,
+						)
+					)
+				)
+			);
+
+			return new \WP_REST_Response( null, 204 );
+		}
+
+		if ( ! function_exists( 'wp_delete_user' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/user.php';
+		}
+
+		$deleted = wp_delete_user( $user->ID, $site_plan['reassign_user_id'] > 0 ? (int) $site_plan['reassign_user_id'] : null );
+		if ( ! $deleted ) {
+			self::emit_identity_event(
+				'scim_delete_failed',
+				array_merge(
+					$audit_base,
+					array(
+						'reason'    => 'wp_delete_user_failed',
+						'site_plan' => $site_plan,
+					)
+				)
+			);
+
+			return self::scim_error_response( new \WP_Error(
+				'scim_internal',
+				'Failed to delete the user.',
+				array( 'status' => 500 )
+			) );
+		}
+
+		self::emit_identity_event(
+			'scim_delete',
+			array_merge(
+				$audit_base,
+				array_merge(
+					$site_plan,
+					array(
+						'mode' => 'delete_user',
+					)
+				)
+			)
+		);
+
+		return new \WP_REST_Response( null, 204 );
 	}
 
 	// ── Group callbacks ──────────────────────────────────────────────────
@@ -788,20 +1175,6 @@ final class ScimController {
 	// ── Helpers ─────────────────────────────────────────────────────────
 
 	/**
-	 * Standard SCIM 501 response for unimplemented operations.
-	 */
-	private static function not_implemented(): \WP_REST_Response {
-		return new \WP_REST_Response(
-			array(
-				'schemas' => array( 'urn:ietf:params:scim:api:messages:2.0:Error' ),
-				'detail'  => 'SCIM provisioning is not yet implemented. This endpoint is reserved for future use.',
-				'status'  => 501,
-			),
-			501
-		);
-	}
-
-	/**
 	 * Convert a WP_Error to a SCIM-formatted JSON error response.
 	 */
 	private static function scim_error_response( \WP_Error $error ): \WP_REST_Response {
@@ -816,6 +1189,311 @@ final class ScimController {
 			),
 			$status
 		);
+	}
+
+	/**
+	 * Emit an auditable SCIM identity event.
+	 *
+	 * @param array<string, mixed> $context
+	 */
+	private static function emit_identity_event( string $event, array $context = array() ): void {
+		do_action(
+			'ea_identity_event',
+			$event,
+			array_merge(
+				array(
+					'blog_id' => get_current_blog_id(),
+					'source'  => 'scim',
+				),
+				$context
+			)
+		);
+	}
+
+	/**
+	 * Build the deletion audit context from the current request.
+	 */
+	private static function build_delete_request_context( \WP_REST_Request $request, string $scope ): array {
+		$forwarded_for = sanitize_text_field( (string) $request->get_header( 'x-forwarded-for' ) );
+		$remote_addr   = '';
+
+		if ( '' !== $forwarded_for ) {
+			$parts       = explode( ',', $forwarded_for );
+			$remote_addr = sanitize_text_field( trim( $parts[0] ) );
+		}
+
+		if ( '' === $remote_addr && isset( $_SERVER['REMOTE_ADDR'] ) ) {
+			$remote_addr = sanitize_text_field( wp_unslash( (string) $_SERVER['REMOTE_ADDR'] ) );
+		}
+
+		$user_agent = sanitize_text_field( substr( (string) $request->get_header( 'user-agent' ), 0, 255 ) );
+		$request_id = sanitize_text_field( (string) $request->get_header( 'x-request-id' ) );
+
+		return array_filter(
+			array(
+				'request_scope'      => $scope,
+				'request_route'      => $request->get_route(),
+				'request_id'         => $request_id,
+				'request_ip'         => $remote_addr,
+				'request_user_agent' => $user_agent,
+			),
+			static fn( $value ): bool => '' !== (string) $value
+		);
+	}
+
+	/**
+	 * Check whether the account is protected from automated SCIM management.
+	 *
+	 * @param array<int, string> $roles
+	 */
+	private static function is_protected_account( int $user_id, array $roles ): bool {
+		return 1 === $user_id || is_super_admin( $user_id ) || in_array( 'administrator', $roles, true );
+	}
+
+	/**
+	 * Build the deprovision plan for the current site.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function build_current_site_deprovision_plan( int $user_id ): array {
+		$steward = self::resolve_site_reassignment_target( $user_id );
+
+		return array(
+			'blog_id'                    => get_current_blog_id(),
+			'reassign_user_id'           => (int) $steward['user_id'],
+			'steward_source'             => $steward['source'],
+			'configured_steward_user_id' => (int) $steward['configured_user_id'],
+			'steward_resolution_reason'  => $steward['reason'],
+			'content_summary'            => self::get_authored_content_summary( $user_id ),
+		);
+	}
+
+	/**
+	 * Build a fail-closed network deprovision plan across every site membership.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function build_network_deprovision_plan( int $user_id ): array {
+		$plan = array(
+			'blog_operations' => array(),
+			'conflicts'       => array(),
+			'protected_blogs' => array(),
+		);
+
+		foreach ( self::get_user_blog_ids( $user_id ) as $blog_id ) {
+			switch_to_blog( $blog_id );
+			$blog_user = get_user_by( 'id', $user_id );
+
+			if ( ! ( $blog_user instanceof \WP_User ) ) {
+				restore_current_blog();
+				continue;
+			}
+
+			if ( self::is_protected_account( $blog_user->ID, (array) $blog_user->roles ) ) {
+				$plan['protected_blogs'][] = array(
+					'blog_id' => $blog_id,
+					'roles'   => array_values( (array) $blog_user->roles ),
+				);
+				restore_current_blog();
+				continue;
+			}
+
+			$site_plan          = self::build_current_site_deprovision_plan( $user_id );
+			$site_plan['roles'] = array_values( (array) $blog_user->roles );
+
+			if ( $site_plan['content_summary']['total'] > 0 && 0 === $site_plan['reassign_user_id'] ) {
+				$plan['conflicts'][] = array(
+					'blog_id'                    => $blog_id,
+					'content_summary'            => $site_plan['content_summary'],
+					'steward_source'             => $site_plan['steward_source'],
+					'configured_steward_user_id' => $site_plan['configured_steward_user_id'],
+					'steward_resolution_reason'  => $site_plan['steward_resolution_reason'],
+				);
+				restore_current_blog();
+				continue;
+			}
+
+			$plan['blog_operations'][] = $site_plan;
+			restore_current_blog();
+		}
+
+		return $plan;
+	}
+
+	/**
+	 * Resolve the site's content steward or deterministic administrator fallback.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function resolve_site_reassignment_target( int $excluded_user_id ): array {
+		$configured_user_id = SettingsController::read_raw_deprovision_steward_user_id();
+
+		if ( $configured_user_id > 0 ) {
+			if ( self::is_valid_steward_user( $configured_user_id, $excluded_user_id ) ) {
+				return array(
+					'user_id'            => $configured_user_id,
+					'source'             => 'configured_steward',
+					'configured_user_id' => $configured_user_id,
+					'reason'             => 'Configured steward resolved for this site.',
+				);
+			}
+
+			return array(
+				'user_id'            => 0,
+				'source'             => 'configured_invalid',
+				'configured_user_id' => $configured_user_id,
+				'reason'             => 'Configured steward is not eligible for this site.',
+			);
+		}
+
+		$fallback_user_id = self::find_fallback_site_administrator( $excluded_user_id );
+		if ( $fallback_user_id > 0 ) {
+			return array(
+				'user_id'            => $fallback_user_id,
+				'source'             => 'fallback_administrator',
+				'configured_user_id' => 0,
+				'reason'             => 'Deterministic site administrator fallback resolved.',
+			);
+		}
+
+		return array(
+			'user_id'            => 0,
+			'source'             => 'none',
+			'configured_user_id' => 0,
+			'reason'             => 'No eligible steward is configured and no deterministic administrator fallback is available.',
+		);
+	}
+
+	/**
+	 * Check whether a candidate steward is valid on the current site.
+	 */
+	private static function is_valid_steward_user( int $candidate_user_id, int $excluded_user_id ): bool {
+		if ( $candidate_user_id <= 0 || $candidate_user_id === $excluded_user_id ) {
+			return false;
+		}
+
+		if ( 1 === $candidate_user_id || is_super_admin( $candidate_user_id ) ) {
+			return false;
+		}
+
+		$candidate = get_userdata( $candidate_user_id );
+		if ( ! ( $candidate instanceof \WP_User ) ) {
+			return false;
+		}
+
+		if ( is_multisite() && ! is_user_member_of_blog( $candidate_user_id, get_current_blog_id() ) ) {
+			return false;
+		}
+
+		return user_can( $candidate, 'edit_posts' );
+	}
+
+	/**
+	 * Resolve the deterministic administrator fallback for the current site.
+	 */
+	private static function find_fallback_site_administrator( int $excluded_user_id ): int {
+		$args = array(
+			'fields'  => 'ids',
+			'exclude' => array( $excluded_user_id ),
+			'role'    => 'administrator',
+			'orderby' => 'ID',
+			'order'   => 'ASC',
+		);
+
+		if ( is_multisite() ) {
+			$args['blog_id'] = get_current_blog_id();
+		}
+
+		$administrators = get_users( $args );
+		foreach ( $administrators as $administrator_id ) {
+			$administrator_id = (int) $administrator_id;
+			if ( 1 === $administrator_id || is_super_admin( $administrator_id ) ) {
+				continue;
+			}
+
+			return $administrator_id;
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Summarise authored content on the current site for reassignment planning.
+	 *
+	 * @return array<string, int>
+	 */
+	private static function get_authored_content_summary( int $user_id ): array {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$posts = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(1) FROM {$wpdb->posts} WHERE post_author = %d", $user_id )
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$links = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(1) FROM {$wpdb->links} WHERE link_owner = %d", $user_id )
+		);
+
+		return array(
+			'posts' => $posts,
+			'links' => $links,
+			'total' => $posts + $links,
+		);
+	}
+
+	/**
+	 * List the site memberships for a user.
+	 *
+	 * @return array<int, int>
+	 */
+	private static function get_user_blog_ids( int $user_id ): array {
+		if ( ! is_multisite() ) {
+			return array( get_current_blog_id() );
+		}
+
+		$blog_ids = array();
+		foreach ( get_blogs_of_user( $user_id ) as $blog ) {
+			$blog_id = isset( $blog->userblog_id ) ? (int) $blog->userblog_id : (int) ( $blog->blog_id ?? 0 );
+			if ( $blog_id > 0 ) {
+				$blog_ids[] = $blog_id;
+			}
+		}
+
+		sort( $blog_ids );
+
+		return array_values( array_unique( $blog_ids ) );
+	}
+
+	/**
+	 * Set or clear the network-wide suspension flag.
+	 */
+	private static function set_network_scim_suspended( int $user_id, bool $suspended ): void {
+		if ( $suspended ) {
+			update_user_meta( $user_id, SiteMetaKeys::NETWORK_SCIM_SUSPENDED, 'true' );
+			return;
+		}
+
+		delete_user_meta( $user_id, SiteMetaKeys::NETWORK_SCIM_SUSPENDED );
+	}
+
+	/**
+	 * Clear the current site's identity binding for a deprovisioned user.
+	 */
+	private static function clear_site_identity_binding( int $user_id, bool $keep_suspended ): void {
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
+
+		if ( $keep_suspended ) {
+			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), 'true' );
+			return;
+		}
+
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
 	}
 
 	// ── SCIM User helpers ───────────────────────────────────────────────

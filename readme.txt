@@ -21,21 +21,28 @@ Key features:
 * Enterprise SSO with OpenID Connect (Authorization Code flow)
 * Domain-based login routing (email domain -> provider)
 * Just-In-Time user provisioning for SAML and OIDC
+* Multisite-aware tenant isolation for identity metadata, re-auth cookies, and protocol transient state
 * Group-to-role mapping for both protocols
 * Wildcard role mapping support using `*` (fallback role)
 * Configurable JIT role ceiling — prevents SSO from granting more than a capped role
 * Break-glass admin isolation — SSO never targets administrator accounts
 * Strict account binding using immutable IdP UID (OIDC `sub` / SAML NameID)
 * SCIM 2.0 user provisioning and deprovisioning with Bearer token auth
+* SCIM DELETE semantics with safe reassignment, explicit site steward support, and fail-closed 409 responses when content cannot be reassigned safely
+* Multisite network deprovision with `DELETE /Users/{id}?scope=network` and a network-wide suspension flag
 * SCIM 2.0 read operations (`GET /Users`, `GET /Users/{id}`, `GET /Groups`) for Okta/Azure AD/MidPoint connector validation
 * SCIM group-to-role entitlement mapping using the existing role mapping engine
 * SCIM suspension blocks all login methods (password, passkey, SSO)
-* SCIM Provisioning admin tab to view SCIM Base URL and generate one-time tokens
+* SCIM Provisioning admin tab to view SCIM Base URL, generate one-time tokens, and configure a site-level Deprovision Steward
+* Existing network users can be attached to the current site during Multisite SCIM create instead of duplicated globally
 * Custom attribute mapping per IdP — override the default claim keys for email, first name, and last name with an admin UI toggle and one-click presets for Azure AD (SAML + OIDC), Shibboleth/InCommon OIDs, and Standard/Okta
 * SSO-only account lockdown — password login and password reset disabled for all SSO-managed users
 * Email change protection — SSO-managed users cannot change their email address
 * Session expiry auto re-authentication — expired sessions redirect transparently back to the user's IdP
 * Force Sign-In Mode — per-IdP toggle to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
+* Capability-aware role hardening blocks custom elevated roles for standard tenant IdPs
+* First-link clean sweep revokes legacy local credentials when an account becomes IdP-managed
+* Identity audit hooks (`ea_identity_event`) for SSO login and SCIM lifecycle actions
 * REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of sensitive dynamic responses
 * Correct local vs SSO routing — local accounts on SSO domains always reach the password form
 * Security hardening controls for WordPress auth behaviour
@@ -52,7 +59,7 @@ Key features:
    * Passkeys
    * SAML providers
    * OIDC providers
-   * SCIM Provisioning (Base URL + token generation)
+   * SCIM Provisioning (Base URL + token generation + Deprovision Steward)
    * Domain mappings
    * Role mappings
 
@@ -86,30 +93,53 @@ The login router checks whether the specific account is a local account before r
 
 Yes. The plugin adds an identity-first login flow and passkey support on the native login page.
 
+= How does SCIM deprovisioning work on Multisite? =
+
+`DELETE /Users/{id}` removes the user from the current site and clears that site's identity bindings. `DELETE /Users/{id}?scope=network` preflights every site membership, applies per-site reassignment policy, and then removes the user from every site if the full plan is safe.
+
+= Can I control who receives content during deprovisioning? =
+
+Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. If no steward is configured, the plugin falls back deterministically to an eligible local administrator. If authored content exists and no valid target can be resolved, delete is rejected with HTTP 409.
+
 == Security Notes ==
 
-* OIDC state is validated on callback and stored with short-lived transients.
+* Multisite isolation: SSO / SCIM binding metadata, re-auth cookies, and protocol transients are site-scoped to prevent cross-site bleed on shared networks.
+* OIDC state, nonce, and code verifier are validated on callback and stored with short-lived transients rather than plugin-managed PHP sessions.
 * OIDC nonce validation is handled through the OIDC client flow.
 * SAML assertions are validated by the SAML toolkit.
 * WebAuthn challenges are short-lived and verified server-side.
 * Break-glass admin isolation: user ID 1 and all administrator accounts are blocked from SSO login and SCIM modification.
 * Strict account binding: after first login, users are matched by immutable IdP UID (`sub` / NameID), not email. A mismatch blocks the login.
+* First-link clean sweep: when an existing local account becomes IdP-managed, the plugin revokes the local password, application passwords, and active sessions before finalizing the binding.
 * Role ceiling: SSO and SCIM provisioning can never assign a role above the configured ceiling, regardless of IdP payload.
+* Capability-aware role hardening: privileged roles are blocked for standard tenant IdPs even when custom role names would bypass a simple textual allowlist.
 * SCIM Bearer token authentication: bcrypt-hashed token verification on all SCIM endpoints.
 * SCIM one-time token disclosure: plaintext tokens are shown once at generation and never stored server-side.
 * SCIM rate limiting: 300 requests/minute to prevent runaway IdP syncs.
-* SCIM suspension login block: deprovisioned users (`active: false`) are blocked from all login methods.
+* SCIM suspension login block: site-scoped suspensions and explicit network-scope deprovision block all login methods.
+* SCIM delete fail-closed policy: if authored content cannot be safely reassigned to a valid steward, delete is rejected with HTTP 409 rather than proceeding partially.
+* SCIM network deprovision: `DELETE /Users/{id}?scope=network` evaluates all site memberships first and sets a network-wide suspension flag after successful removal.
 * Local account protection: local accounts on SSO-mapped domains are never redirected to an IdP.
 * SSO-only account lockdown: password login and password reset are blocked for all SSO-managed users (identified by `_enterprise_auth_idp_uid` or `enterprise_iam_scim_id` meta). User ID 1 is exempt.
 * Email change protection: SSO-managed users cannot change their email address via the profile screen or REST API.
-* Session expiry auto re-auth: the `enterprise_auth_last_idp` cookie (90-day, HttpOnly, Secure, SameSite=Lax) enables seamless redirect to the correct IdP when a WP session expires.
+* Session expiry auto re-auth: the `enterprise_auth_last_idp` cookie (site-scoped on Multisite; 90-day, HttpOnly, Secure, SameSite=Lax) enables seamless redirect to the correct IdP when a WP session expires.
 * Force Sign-In Mode: optional per-IdP setting appends ForceAuthn=true (SAML) or prompt=login (OIDC) to each authentication request.
 * REST API cache-control: all `enterprise-auth/` REST endpoints return `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0` headers. This defends against web cache deception and poisoning attacks where CDN or proxy URL-parser discrepancies could cause sensitive dynamic responses to be stored and served to other users.
+* Auditability: `ea_identity_event` hooks fire on successful SSO login and on SCIM lifecycle events, with delete events carrying reassignment and request metadata where available.
 
 == Changelog ==
 
 = 1.5.1 =
-* Security: REST API cache-control hardening — added `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0` to all `enterprise-auth/` REST responses via `rest_post_dispatch` filter, preventing CDN/proxy caching of sensitive dynamic responses (web cache deception/poisoning defence)
+* Security: Multisite tenant isolation — site-scoped identity metadata, re-auth cookies, and protocol transient keys prevent cross-site bleed on shared networks
+* Security: OIDC callback hardening — state, nonce, and PKCE verifier now use short-lived transients instead of plugin-managed PHP sessions
+* Security: first-link clean sweep — existing local accounts lose legacy passwords, application passwords, and active sessions when they first become IdP-managed
+* Security: capability-aware role hardening — privileged roles are blocked for standard tenant IdPs even when custom role names would otherwise bypass a simple ceiling check
+* Security: REST API cache-control hardening — all `enterprise-auth/` REST responses now include `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0`
+* Feature: SCIM create on Multisite can attach an existing network user to the current site instead of creating a duplicate global account
+* Feature: SCIM delete semantics — `DELETE /Users/{id}` now performs safe single-site and Multisite deprovisioning with explicit reassignment planning and HTTP 409 fail-closed behavior when content cannot be safely reassigned
+* Feature: Multisite network deprovision — `DELETE /Users/{id}?scope=network` preflights every site membership, applies per-site reassignment, removes memberships, and then blocks future login via a network-wide suspension flag
+* Feature: SCIM admin UI now includes a per-site Deprovision Steward selector for deterministic content reassignment during automated offboarding
+* Feature: identity audit hooks — `ea_identity_event` is emitted for successful SSO logins and SCIM lifecycle actions
 
 = 1.5.0 =
 * Security: SSO-only account lockdown — password login blocked for SSO-managed users via `authenticate` filter (priority 25); password reset blocked via `allow_password_reset` filter
@@ -168,16 +198,14 @@ Yes. The plugin adds an identity-first login flow and passkey support on the nat
 
 == Upgrade Notice ==
 
-= 1.0.0 =
-Initial release of Enterprise Auth with passkeys, SAML, and OIDC support.
-
-== Upgrade Notice ==
-
 = 1.5.1 =
-Security hardening: all plugin REST endpoints now include anti-caching headers to prevent CDN/proxy web cache deception attacks. No configuration changes needed.
+Security and Multisite hardening release. Review the SCIM Deprovision Steward setting on each site before enabling automated delete flows, especially on Multisite. No database schema changes.
 
 = 1.5.0 =
 Adds identity governance controls: SSO-only account lockdown, email change protection, session expiry auto re-auth, and Force Sign-In Mode. No database changes. Existing IdP configurations are unaffected; the new `force_reauth` field defaults to false.
 
 = 1.4.0 =
 Adds custom attribute mapping per IdP. No breaking changes.
+
+= 1.0.0 =
+Initial release of Enterprise Auth with passkeys, SAML, and OIDC support.

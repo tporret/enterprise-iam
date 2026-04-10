@@ -338,8 +338,9 @@ final class Core {
 
 		// Check for the last-used IdP cookie.
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$last_idp_id = isset( $_COOKIE['enterprise_auth_last_idp'] )
-			? sanitize_text_field( wp_unslash( $_COOKIE['enterprise_auth_last_idp'] ) )
+		$cookie_name = self::last_idp_cookie_name();
+		$last_idp_id = isset( $_COOKIE[ $cookie_name ] )
+			? sanitize_text_field( wp_unslash( $_COOKIE[ $cookie_name ] ) )
 			: '';
 
 		if ( '' === $last_idp_id ) {
@@ -369,5 +370,16 @@ final class Core {
 
 		wp_safe_redirect( $redirect );
 		exit;
+	}
+
+	/**
+	 * Per-blog cookie name used for seamless SSO re-authentication.
+	 */
+	private static function last_idp_cookie_name(): string {
+		if ( ! is_multisite() ) {
+			return 'enterprise_auth_last_idp';
+		}
+
+		return 'enterprise_auth_last_idp_' . get_current_blog_id();
 	}
 }

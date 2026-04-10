@@ -111,7 +111,7 @@ final class PasskeyRegistrationController {
 
 		// Store options in a transient for verification (60 seconds TTL).
 		set_transient(
-			self::TRANSIENT . $user_id,
+			self::transient_key( $user_id ),
 			WebAuthnHelper::serializer()->serialize( $options, 'json' ),
 			self::CHALLENGE_TTL
 		);
@@ -129,8 +129,8 @@ final class PasskeyRegistrationController {
 		$user_id = (int) $user->ID;
 
 		// Retrieve the stored creation options.
-		$options_json = get_transient( self::TRANSIENT . $user_id );
-		delete_transient( self::TRANSIENT . $user_id );
+		$options_json = get_transient( self::transient_key( $user_id ) );
+		delete_transient( self::transient_key( $user_id ) );
 
 		if ( ! $options_json ) {
 			return new \WP_REST_Response(
@@ -196,5 +196,18 @@ final class PasskeyRegistrationController {
 			),
 			200
 		);
+	}
+
+	/**
+	 * Blog-scoped transient key for WebAuthn registration challenges.
+	 */
+	private static function transient_key( int $user_id ): string {
+		$key = self::TRANSIENT . $user_id;
+
+		if ( ! is_multisite() ) {
+			return $key;
+		}
+
+		return 'ea_' . get_current_blog_id() . '_' . $key;
 	}
 }

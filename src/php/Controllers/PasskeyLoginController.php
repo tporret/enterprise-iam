@@ -93,7 +93,7 @@ final class PasskeyLoginController {
 		// Keyed by a random nonce so we can look it up on POST.
 		$session_key = bin2hex( random_bytes( 16 ) );
 		set_transient(
-			self::TRANSIENT . $session_key,
+			self::transient_key( $session_key ),
 			wp_json_encode(
 				array(
 					'options' => WebAuthnHelper::serializer()->serialize( $options, 'json' ),
@@ -121,8 +121,8 @@ final class PasskeyLoginController {
 			return new \WP_REST_Response( array( 'error' => 'Missing session key.' ), 400 );
 		}
 
-		$stored_raw = get_transient( self::TRANSIENT . $session_key );
-		delete_transient( self::TRANSIENT . $session_key );
+		$stored_raw = get_transient( self::transient_key( $session_key ) );
+		delete_transient( self::transient_key( $session_key ) );
 
 		if ( ! $stored_raw ) {
 			return new \WP_REST_Response( array( 'error' => 'Challenge expired or not found.' ), 400 );
@@ -235,5 +235,18 @@ final class PasskeyLoginController {
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Blog-scoped transient key for WebAuthn login challenges.
+	 */
+	private static function transient_key( string $session_key ): string {
+		$key = self::TRANSIENT . sanitize_text_field( $session_key );
+
+		if ( ! is_multisite() ) {
+			return $key;
+		}
+
+		return 'ea_' . get_current_blog_id() . '_' . $key;
 	}
 }

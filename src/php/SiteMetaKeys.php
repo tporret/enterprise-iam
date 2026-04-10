@@ -33,6 +33,7 @@ final class SiteMetaKeys {
 	// ── SCIM meta keys ──────────────────────────────────────────────────
 	public const SCIM_ID         = 'enterprise_iam_scim_id';
 	public const SCIM_SUSPENDED  = 'is_scim_suspended';
+	public const NETWORK_SCIM_SUSPENDED = 'enterprise_iam_network_scim_suspended';
 
 	/**
 	 * Mapping from base keys to short suffixes used in the Multisite
@@ -59,6 +60,10 @@ final class SiteMetaKeys {
 	 * @param string $base_key One of this class's constants.
 	 */
 	public static function key( string $base_key ): string {
+		if ( self::NETWORK_SCIM_SUSPENDED === $base_key ) {
+			return $base_key;
+		}
+
 		if ( ! is_multisite() ) {
 			return $base_key;
 		}

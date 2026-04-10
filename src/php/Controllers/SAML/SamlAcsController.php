@@ -68,7 +68,7 @@ final class SamlAcsController {
 
 			// Retrieve and consume the stored AuthnRequest ID for
 			// InResponseTo validation (prevents unsolicited response replay).
-			$transient_key = 'ea_saml_reqid_' . $idp_id;
+			$transient_key = self::request_id_transient_key( $idp_id );
 			$request_id    = get_transient( $transient_key );
 			delete_transient( $transient_key );
 
@@ -225,5 +225,18 @@ final class SamlAcsController {
 	 */
 	private function success_redirect(): \WP_REST_Response {
 		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
+	}
+
+	/**
+	 * Blog-scoped transient key for SAML AuthnRequest IDs.
+	 */
+	private static function request_id_transient_key( string $idp_id ): string {
+		$key = 'ea_saml_reqid_' . sanitize_text_field( $idp_id );
+
+		if ( ! is_multisite() ) {
+			return $key;
+		}
+
+		return 'ea_' . get_current_blog_id() . '_' . $key;
 	}
 }

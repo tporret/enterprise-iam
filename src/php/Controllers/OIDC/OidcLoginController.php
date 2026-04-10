@@ -9,7 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\IdpManager;
-use Jumbojett\OpenIDConnectClient;
 
 /**
  * OIDC Authorization Redirect.
@@ -57,7 +56,6 @@ final class OidcLoginController {
 			return new \WP_REST_Response( array( 'error' => 'This IdP is currently disabled.' ), 403 );
 		}
 
-		$issuer        = $idp['issuer'] ?? ( $idp['authorization_endpoint'] ?? '' );
 		$client_id     = $idp['client_id'] ?? '';
 		$client_secret = $idp['client_secret'] ?? '';
 
@@ -66,14 +64,8 @@ final class OidcLoginController {
 		}
 
 		try {
-			$oidc = new OpenIDConnectClient( $issuer, $client_id, $client_secret );
-
 			// Set the redirect URI to our callback endpoint.
 			$redirect_uri = rest_url( 'enterprise-auth/v1/oidc/callback' );
-			$oidc->setRedirectURL( $redirect_uri );
-
-			// Request standard scopes.
-			$oidc->addScope( array( 'openid', 'email', 'profile' ) );
 
 			// Generate cryptographic state and nonce for CSRF / replay protection.
 			$state = bin2hex( random_bytes( 16 ) );
@@ -83,41 +75,20 @@ final class OidcLoginController {
 			$code_verifier  = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
 			$code_challenge = rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' );
 
-			// Store state + nonce + IdP ID in a WP Transient (5-minute TTL).
+			// Store state + nonce + verifier in a WP Transient (10-minute TTL).
 			set_transient(
-				'ea_oidc_state_' . $state,
+				self::verification_transient_key( $state ),
 				wp_json_encode(
 					array(
-						'idp_id' => $idp_id,
-						'nonce'  => $nonce,
+						'idp_id'        => $idp_id,
+						'blog_id'       => get_current_blog_id(),
+						'state'         => $state,
+						'nonce'         => $nonce,
+						'code_verifier' => $code_verifier,
 					)
 				),
-				300
+				600
 			);
-
-			// Write state/nonce/verifier to PHP session so the library's
-			// protected getState()/getNonce() can read them on the callback.
-			if ( PHP_SESSION_NONE === session_status() ) {
-				session_start();
-				session_regenerate_id( true );
-			}
-			$_SESSION['openid_connect_state']         = $state;
-			$_SESSION['openid_connect_nonce']         = $nonce;
-			$_SESSION['openid_connect_code_verifier'] = $code_verifier;
-			session_write_close();
-
-			// If the IdP has explicit endpoint overrides, configure them
-			// so the library skips discovery.
-			if ( ! empty( $idp['authorization_endpoint'] ) ) {
-				$oidc->providerConfigParam(
-					array(
-						'authorization_endpoint' => $idp['authorization_endpoint'],
-						'token_endpoint'         => $idp['token_endpoint'] ?? '',
-						'userinfo_endpoint'      => $idp['userinfo_endpoint'] ?? '',
-						'jwks_uri'               => $idp['jwks_uri'] ?? '',
-					)
-				);
-			}
 
 			// Use the authorization endpoint from our IdP config directly,
 			// since getProviderConfigValue() is protected in the library.
@@ -157,5 +128,12 @@ final class OidcLoginController {
 				500
 			);
 		}
+	}
+
+	/**
+	 * Blog-scoped transient key for OIDC verification state.
+	 */
+	private static function verification_transient_key( string $state ): string {
+		return 'ea_oidc_v_' . get_current_blog_id() . '_' . sanitize_text_field( $state );
 	}
 }

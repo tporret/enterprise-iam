@@ -14,6 +14,9 @@ export default function App() {
 		app_passwords: false,
 		role_ceiling: 'editor',
 		session_timeout: 8,
+		deprovision_steward_user_id: 0,
+		deprovision_steward_options: [],
+		deprovision_steward_user: null,
 	} );
 	const [ saving, setSaving ] = useState( false );
 	const [ loaded, setLoaded ] = useState( false );
@@ -65,7 +68,7 @@ export default function App() {
 			<header className="ea-header">
 				<div className="ea-header__inner">
 					<h1 className="ea-header__title">Enterprise Auth</h1>
-					<span className="ea-header__badge">v1.4.0</span>
+					<span className="ea-header__badge">v1.5.1</span>
 				</div>
 				<p className="ea-header__subtitle">
 					Zero Trust security hardening for WordPress
@@ -169,7 +172,12 @@ export default function App() {
 				) }
 
 				{ tab === 'scim' && (
-					<ScimSettings showToast={ showToast } />
+					<ScimSettings
+						showToast={ showToast }
+						settings={ settings }
+						saving={ saving }
+						updateSetting={ updateSetting }
+					/>
 				) }
 			</main>
 

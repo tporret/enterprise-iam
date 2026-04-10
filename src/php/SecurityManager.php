@@ -138,6 +138,14 @@ final class SecurityManager {
 					return $user;
 				}
 
+				$network_suspended = get_user_meta( $user->ID, SiteMetaKeys::NETWORK_SCIM_SUSPENDED, true );
+				if ( 'true' === $network_suspended ) {
+					return new \WP_Error(
+						'account_suspended',
+						__( 'Account suspended by Identity Provider.', 'enterprise-auth' )
+					);
+				}
+
 				$suspended = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), true );
 				if ( 'true' === $suspended ) {
 					return new \WP_Error(
@@ -163,6 +171,10 @@ final class SecurityManager {
 	private static function is_sso_bound( int $user_id ): bool {
 		if ( 1 === $user_id ) {
 			return false;
+		}
+
+		if ( 'true' === get_user_meta( $user_id, SiteMetaKeys::NETWORK_SCIM_SUSPENDED, true ) ) {
+			return true;
 		}
 
 		$idp_uid = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );

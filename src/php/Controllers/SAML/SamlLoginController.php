@@ -82,7 +82,7 @@ final class SamlLoginController {
 			$request_id = $auth->getLastRequestID();
 			if ( $request_id ) {
 				set_transient(
-					'ea_saml_reqid_' . $idp_id,
+					self::request_id_transient_key( $idp_id ),
 					$request_id,
 					300 // 5-minute TTL — matches typical SAML NotOnOrAfter window.
 				);
@@ -99,5 +99,18 @@ final class SamlLoginController {
 				500
 			);
 		}
+	}
+
+	/**
+	 * Blog-scoped transient key for SAML AuthnRequest IDs.
+	 */
+	private static function request_id_transient_key( string $idp_id ): string {
+		$key = 'ea_saml_reqid_' . sanitize_text_field( $idp_id );
+
+		if ( ! is_multisite() ) {
+			return $key;
+		}
+
+		return 'ea_' . get_current_blog_id() . '_' . $key;
 	}
 }
