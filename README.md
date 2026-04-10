@@ -52,7 +52,7 @@ It combines:
 ## Requirements
 
 - WordPress 6.0+
-- PHP 8.1+
+- PHP 8.3+
 - Composer dependencies installed (`vendor/`)
 - Frontend assets built (`build/`)
 
@@ -370,7 +370,7 @@ Enable with the **Force Re-Authentication** checkbox in each IdP's configuration
 
 ## Tech Stack
 
-- PHP 8.1+
+- PHP 8.3+
 - WordPress REST API
 - React (`@wordpress/components`, `@wordpress/element`)
 - WebAuthn (`web-auth/webauthn-lib`)

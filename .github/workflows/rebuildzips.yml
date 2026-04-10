@@ -32,20 +32,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG_NAME="${{ github.event.inputs.tag_name }}"
-            TAG_NAME="${TAG_NAME#refs/tags/}"
+          TAG_NAME="${{ github.event.inputs.tag_name }}"
+          TAG_NAME="${TAG_NAME#refs/tags/}"
 
-            if [ -z "${TAG_NAME}" ]; then
-              echo "::error::For manual runs, provide tag_name (for example: v1.0.2)."
-              exit 1
-            fi
-
-            CHECKOUT_REF="refs/tags/${TAG_NAME}"
-          else
-            TAG_NAME="${{ github.event.release.tag_name || github.ref_name }}"
-            CHECKOUT_REF="${{ github.ref }}"
+          if [ -z "${TAG_NAME}" ]; then
+            echo "::error::For manual runs, provide tag_name (for example: v1.0.2)."
+            exit 1
           fi
+
+          CHECKOUT_REF="refs/tags/${TAG_NAME}"
 
           echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_ENV"
           echo "CHECKOUT_REF=${CHECKOUT_REF}" >> "$GITHUB_ENV"
@@ -154,8 +149,9 @@ jobs:
       # Reads from (in order):
       #   1. .github/plugin-config   →  PHP_VERSION=x.y
       #   2. composer.json            →  config.platform.php
-      #   3. .php-version file
-      #   4. Fallback: 8.2
+      #   3. composer.json            →  require.php (first major.minor)
+      #   4. .php-version file
+      #   5. Fallback: 8.3
       # ---------------------------------------------------------------
       - name: Resolve PHP version
         id: php-version
@@ -170,29 +166,23 @@ jobs:
           fi
 
           if [ -z "${PHP_VERSION}" ] && [ -f composer.json ]; then
-            PHP_VERSION="$(python3 -c "
-          import json, sys, re
-          try:
-              c = json.load(open('composer.json'))
-              v = c.get('config',{}).get('platform',{}).get('php','')
-              if v: print(v)
-          except: pass
-          " 2>/dev/null || true)"
+            PHP_VERSION="$(python3 -c "import json,re; from pathlib import Path; c=json.loads(Path('composer.json').read_text()); candidates=(c.get('config',{}).get('platform',{}).get('php',''), c.get('require',{}).get('php','')); print(next((m.group(1) for value in candidates for m in [re.search(r'(\\d+\\.\\d+)', str(value))] if m), ''))" 2>/dev/null || true)"
           fi
 
           if [ -z "${PHP_VERSION}" ] && [ -f .php-version ]; then
             PHP_VERSION="$(head -n1 .php-version | tr -d '\r' | xargs)"
           fi
 
-          PHP_VERSION="${PHP_VERSION:-8.2}"
+          PHP_VERSION="${PHP_VERSION:-8.3}"
           echo "version=${PHP_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Setup PHP (for Composer)
         if: ${{ hashFiles('composer.json') != '' }}
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ steps.php-version.outputs.version || '8.2' }}
-          tools: composer
+          php-version: ${{ steps.php-version.outputs.version || '8.3' }}
+          extensions: bcmath, dom, simplexml, xmlreader, xmlwriter
+          tools: composer:v2.9
           coverage: none
 
       # ---------------------------------------------------------------

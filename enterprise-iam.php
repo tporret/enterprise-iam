@@ -3,8 +3,8 @@
  * Plugin Name: Enterprise Auth – Identity & Access Management
  * Plugin URI:  https://porretto.com/enterprise-auth
  * Description: Enterprise-grade Identity & Access Management for WordPress. Zero Trust security hardening, REST API lockdown, and a modern React admin UI.
- * Version:     1.5.1
- * Requires PHP: 8.1
+ * Version:     1.5.2
+ * Requires PHP: 8.3
  * Author:      tporret
  * License:     GPL-2.0-or-later
  * Donate link: https://porretto.com/donate
@@ -16,18 +16,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
-define( 'ENTERPRISE_AUTH_VERSION', '1.5.1' );
+define( 'ENTERPRISE_AUTH_VERSION', '1.5.2' );
 define( 'ENTERPRISE_AUTH_FILE', __FILE__ );
 define( 'ENTERPRISE_AUTH_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ENTERPRISE_AUTH_URL', plugin_dir_url( __FILE__ ) );
 
 // ── PHP version gate ────────────────────────────────────────────────────────
-if ( version_compare( PHP_VERSION, '8.1', '<' ) ) {
+if ( version_compare( PHP_VERSION, '8.3', '<' ) ) {
 	add_action(
 		'admin_notices',
 		static function (): void {
 			echo '<div class="notice notice-error"><p>';
-			echo esc_html__( 'Enterprise Auth requires PHP 8.1 or higher.', 'enterprise-auth' );
+			echo esc_html__( 'Enterprise Auth requires PHP 8.3 or higher.', 'enterprise-auth' );
 			echo '</p></div>';
 		}
 	);

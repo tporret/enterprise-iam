@@ -3,8 +3,8 @@ Contributors: enterprise-auth-team
 Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, security
 Requires at least: 6.0
 Tested up to: 6.9
-Requires PHP: 8.1
-Stable tag: 1.5.1
+Requires PHP: 8.3
+Stable tag: 1.5.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -129,6 +129,10 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 
 == Changelog ==
 
+= 1.5.2 =
+* Build: release and rebuild workflows now pin the packaging runtime to PHP 8.3 via explicit plugin release configuration
+* Compatibility: Composer metadata now pins dependency resolution to PHP 8.3 so release builds avoid accidental PHP 8.4-only lockfile drift
+
 = 1.5.1 =
 * Security: Multisite tenant isolation — site-scoped identity metadata, re-auth cookies, and protocol transient keys prevent cross-site bleed on shared networks
 * Security: OIDC callback hardening — state, nonce, and PKCE verifier now use short-lived transients instead of plugin-managed PHP sessions
@@ -197,6 +201,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Group and wildcard role mapping
 
 == Upgrade Notice ==
+
+= 1.5.2 =
+Release packaging and metadata alignment update. PHP 8.3+ is now the declared minimum, and Composer resolution is pinned to PHP 8.3 to keep release builds compatible.
 
 = 1.5.1 =
 Security and Multisite hardening release. Review the SCIM Deprovision Steward setting on each site before enabling automated delete flows, especially on Multisite. No database schema changes.
