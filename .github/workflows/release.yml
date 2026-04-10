@@ -1,0 +1,404 @@
+name: Build and Publish WordPress Plugin Zip
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Existing release tag to rebuild (example: v1.0.2)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-release-asset:
+    runs-on: ubuntu-latest
+
+    env:
+      TAG_NAME: ''
+      CHECKOUT_REF: ''
+      PLUGIN_SLUG: ''
+      ASSET_NAME: ''
+      MAIN_PLUGIN_FILE: ''
+
+    steps:
+      - name: Resolve tag and checkout ref
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+            TAG_NAME="${TAG_NAME#refs/tags/}"
+
+            if [ -z "${TAG_NAME}" ]; then
+              echo "::error::For manual runs, provide tag_name (for example: v1.0.2)."
+              exit 1
+            fi
+
+            CHECKOUT_REF="refs/tags/${TAG_NAME}"
+          else
+            TAG_NAME="${{ github.event.release.tag_name || github.ref_name }}"
+            CHECKOUT_REF="${{ github.ref }}"
+          fi
+
+          echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_ENV"
+          echo "CHECKOUT_REF=${CHECKOUT_REF}" >> "$GITHUB_ENV"
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.CHECKOUT_REF }}
+
+      # ---------------------------------------------------------------
+      # Point 5 — Plugin slug detection with override support.
+      #
+      # Priority order:
+      #   1. PLUGIN_SLUG defined in .github/plugin-config (explicit override)
+      #   2. Text Domain header from the main plugin PHP file
+      #   3. Repository name (original fallback)
+      #
+      # This prevents mismatches when the repo name differs from
+      # the expected wp-content/plugins/<slug> folder name.
+      # ---------------------------------------------------------------
+      - name: Detect main plugin file
+        id: detect-plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN_PLUGIN_FILE="$(grep -RIl --include='*.php' '^[[:space:]]*\*\?[[:space:]]*Plugin Name:' . | head -n 1 || true)"
+          if [ -z "${MAIN_PLUGIN_FILE}" ]; then
+            echo "::error::No PHP file with a 'Plugin Name' header was found."
+            exit 1
+          fi
+
+          echo "MAIN_PLUGIN_FILE=${MAIN_PLUGIN_FILE}" >> "$GITHUB_ENV"
+
+      - name: Set release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # --- Resolve plugin slug ---
+          PLUGIN_SLUG=""
+
+          # 1. Explicit override via config file.
+          if [ -f .github/plugin-config ]; then
+            PLUGIN_SLUG="$(grep -Eim1 '^PLUGIN_SLUG=' .github/plugin-config | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+          fi
+
+          # 2. Text Domain header from the main plugin file.
+          if [ -z "${PLUGIN_SLUG}" ]; then
+            PLUGIN_SLUG="$(grep -Eim1 '^[[:space:]]*\*?[[:space:]]*Text Domain:' "${MAIN_PLUGIN_FILE}" | sed -E 's/^[[:space:]]*\*?[[:space:]]*Text Domain:[[:space:]]*//I' | tr -d '\r' | xargs || true)"
+          fi
+
+          # 3. Fallback to repository name.
+          if [ -z "${PLUGIN_SLUG}" ]; then
+            PLUGIN_SLUG="${{ github.event.repository.name }}"
+          fi
+
+          ASSET_NAME="${PLUGIN_SLUG}-${TAG_NAME}.zip"
+
+          echo "TAG_NAME=${TAG_NAME}"       >> "$GITHUB_ENV"
+          echo "PLUGIN_SLUG=${PLUGIN_SLUG}" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=${ASSET_NAME}"   >> "$GITHUB_ENV"
+
+          echo "### Release metadata" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Key | Value |"      >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |"        >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`${TAG_NAME}\` |"         >> "$GITHUB_STEP_SUMMARY"
+          echo "| Slug | \`${PLUGIN_SLUG}\` |"     >> "$GITHUB_STEP_SUMMARY"
+          echo "| Asset | \`${ASSET_NAME}\` |"     >> "$GITHUB_STEP_SUMMARY"
+          echo "| Plugin file | \`${MAIN_PLUGIN_FILE}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------------
+      # Point 1 — Strict three-way version synchronization with clear
+      #           error annotations visible in the Actions UI.
+      # ---------------------------------------------------------------
+      - name: Validate tag and plugin version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION_FROM_TAG="${TAG_NAME#v}"
+
+          VERSION_FROM_HEADER="$(grep -Eim1 '^[[:space:]]*\*?[[:space:]]*Version:' "${MAIN_PLUGIN_FILE}" | sed -E 's/^[[:space:]]*\*?[[:space:]]*Version:[[:space:]]*//I' | tr -d '\r' | xargs || true)"
+          if [ -z "${VERSION_FROM_HEADER}" ]; then
+            echo "::error file=${MAIN_PLUGIN_FILE}::Could not read 'Version:' header from ${MAIN_PLUGIN_FILE}."
+            exit 1
+          fi
+
+          if [ "${VERSION_FROM_HEADER}" != "${VERSION_FROM_TAG}" ]; then
+            echo "::error file=${MAIN_PLUGIN_FILE}::Version mismatch — tag '${TAG_NAME}' resolves to '${VERSION_FROM_TAG}' but plugin header declares '${VERSION_FROM_HEADER}'. Bump the Version header before tagging."
+            exit 1
+          fi
+
+          if [ -f readme.txt ]; then
+            STABLE_TAG="$(grep -Eim1 '^[[:space:]]*Stable tag:' readme.txt | sed -E 's/^[[:space:]]*Stable tag:[[:space:]]*//I' | tr -d '\r' | xargs || true)"
+            if [ -n "${STABLE_TAG}" ] && [ "${STABLE_TAG}" != "trunk" ] && [ "${STABLE_TAG}" != "${VERSION_FROM_HEADER}" ]; then
+              echo "::error file=readme.txt::readme.txt Stable tag '${STABLE_TAG}' does not match plugin version '${VERSION_FROM_HEADER}'. Update the Stable tag before tagging."
+              exit 1
+            fi
+          fi
+
+      # ---------------------------------------------------------------
+      # Point 2 — Dynamic PHP version detection.
+      #
+      # Reads from (in order):
+      #   1. .github/plugin-config   →  PHP_VERSION=x.y
+      #   2. composer.json            →  config.platform.php
+      #   3. .php-version file
+      #   4. Fallback: 8.2
+      # ---------------------------------------------------------------
+      - name: Resolve PHP version
+        id: php-version
+        if: ${{ hashFiles('composer.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PHP_VERSION=""
+
+          if [ -f .github/plugin-config ]; then
+            PHP_VERSION="$(grep -Eim1 '^PHP_VERSION=' .github/plugin-config | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+          fi
+
+          if [ -z "${PHP_VERSION}" ] && [ -f composer.json ]; then
+            PHP_VERSION="$(python3 -c "
+          import json, sys, re
+          try:
+              c = json.load(open('composer.json'))
+              v = c.get('config',{}).get('platform',{}).get('php','')
+              if v: print(v)
+          except: pass
+          " 2>/dev/null || true)"
+          fi
+
+          if [ -z "${PHP_VERSION}" ] && [ -f .php-version ]; then
+            PHP_VERSION="$(head -n1 .php-version | tr -d '\r' | xargs)"
+          fi
+
+          PHP_VERSION="${PHP_VERSION:-8.2}"
+          echo "version=${PHP_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup PHP (for Composer)
+        if: ${{ hashFiles('composer.json') != '' }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ steps.php-version.outputs.version || '8.2' }}
+          tools: composer
+          coverage: none
+
+      # ---------------------------------------------------------------
+      # Point 2 — Dynamic Node version detection.
+      #
+      # Reads from (in order):
+      #   1. .github/plugin-config   →  NODE_VERSION=xx
+      #   2. .nvmrc or .node-version file
+      #   3. Fallback: 20
+      # ---------------------------------------------------------------
+      - name: Resolve Node version
+        id: node-version
+        if: ${{ hashFiles('package.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_VERSION=""
+
+          if [ -f .github/plugin-config ]; then
+            NODE_VERSION="$(grep -Eim1 '^NODE_VERSION=' .github/plugin-config | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+          fi
+
+          if [ -z "${NODE_VERSION}" ] && [ -f .nvmrc ]; then
+            NODE_VERSION="$(head -n1 .nvmrc | tr -d '\r' | xargs)"
+          fi
+
+          if [ -z "${NODE_VERSION}" ] && [ -f .node-version ]; then
+            NODE_VERSION="$(head -n1 .node-version | tr -d '\r' | xargs)"
+          fi
+
+          NODE_VERSION="${NODE_VERSION:-20}"
+          echo "version=${NODE_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: ${{ hashFiles('package.json') != '' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ steps.node-version.outputs.version || '20' }}
+
+      # ---------------------------------------------------------------
+      # Point 3 — Multi-package-manager support.
+      #
+      # Detects the package manager from lockfiles:
+      #   pnpm-lock.yaml  → pnpm
+      #   yarn.lock       → yarn
+      #   bun.lockb        → bun
+      #   (default)       → npm
+      #
+      # Build command resolution:
+      #   1. .github/plugin-config  →  BUILD_SCRIPT=<command>
+      #   2. Fallback: <pm> run build --if-present
+      # ---------------------------------------------------------------
+      - name: Install and build frontend assets
+        if: ${{ hashFiles('package.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Detect package manager from lockfiles.
+          if [ -f pnpm-lock.yaml ]; then
+            PM="pnpm"
+            npm install -g pnpm
+            pnpm install --frozen-lockfile
+          elif [ -f yarn.lock ]; then
+            PM="yarn"
+            yarn install --frozen-lockfile
+          elif [ -f bun.lockb ]; then
+            PM="bun"
+            npm install -g bun
+            bun install --frozen-lockfile
+          elif [ -f package-lock.json ]; then
+            PM="npm"
+            npm ci
+          else
+            PM="npm"
+            npm install
+          fi
+
+          # Resolve build command.
+          BUILD_SCRIPT=""
+          if [ -f .github/plugin-config ]; then
+            BUILD_SCRIPT="$(grep -Eim1 '^BUILD_SCRIPT=' .github/plugin-config | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+          fi
+
+          if [ -n "${BUILD_SCRIPT}" ]; then
+            echo "Running custom build: ${BUILD_SCRIPT}"
+            eval "${BUILD_SCRIPT}"
+          else
+            ${PM} run build --if-present
+          fi
+
+      - name: Install Composer dependencies (if applicable)
+        if: ${{ hashFiles('composer.json') != '' }}
+        shell: bash
+        run: |
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+      - name: Validate required plugin files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "${MAIN_PLUGIN_FILE}" ]; then
+            echo "::error::Main plugin file '${MAIN_PLUGIN_FILE}' is missing after build."
+            exit 1
+          fi
+
+          if [ ! -f readme.txt ]; then
+            echo "::warning::readme.txt is missing (recommended for WordPress.org style distribution)."
+          fi
+
+      # ---------------------------------------------------------------
+      # Point 4 — .distignore / .gitattributes support.
+      #
+      # If a .distignore file exists, it is used as the rsync
+      # exclude-from source so each plugin controls its own packaging.
+      # Otherwise falls back to the built-in exclusion list.
+      # ---------------------------------------------------------------
+      - name: Create clean plugin package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          mkdir -p "dist/${PLUGIN_SLUG}"
+
+          RSYNC_ARGS=(-a ./ "dist/${PLUGIN_SLUG}/")
+
+          if [ -f .distignore ]; then
+            echo "Using .distignore for exclusion rules."
+            RSYNC_ARGS+=(--exclude-from='.distignore')
+          elif [ -f .gitattributes ]; then
+            # Extract paths marked 'export-ignore' from .gitattributes
+            # into a temporary exclude file for rsync.
+            echo "Deriving exclusions from .gitattributes export-ignore entries."
+            TMPEXCLUDE="$(mktemp)"
+            grep -E '\bexport-ignore\b' .gitattributes | awk '{print $1}' > "${TMPEXCLUDE}" || true
+            if [ -s "${TMPEXCLUDE}" ]; then
+              RSYNC_ARGS+=(--exclude-from="${TMPEXCLUDE}")
+            fi
+          fi
+
+          # Always exclude these regardless of custom ignore files.
+          RSYNC_ARGS+=(
+            --exclude='.git/'
+            --exclude='.github/'
+            --exclude='node_modules/'
+            --exclude='dist/'
+            --exclude='.distignore'
+          )
+
+          # Default development exclusions (only when no custom ignore file).
+          if [ ! -f .distignore ] && [ ! -f .gitattributes ]; then
+            RSYNC_ARGS+=(
+              --exclude='tests/'
+              --exclude='test/'
+              --exclude='.editorconfig'
+              --exclude='.eslintrc*'
+              --exclude='.prettierrc*'
+              --exclude='.stylelintrc*'
+              --exclude='.gitignore'
+              --exclude='.gitattributes'
+              --exclude='phpunit.xml*'
+              --exclude='phpcs.xml*'
+              --exclude='webpack.config.*'
+              --exclude='vite.config.*'
+              --exclude='rollup.config.*'
+              --exclude='gulpfile.*'
+              --exclude='Gruntfile.*'
+              --exclude='package.json'
+              --exclude='package-lock.json'
+              --exclude='pnpm-lock.yaml'
+              --exclude='yarn.lock'
+              --exclude='bun.lockb'
+              --exclude='composer.json'
+              --exclude='composer.lock'
+              --exclude='.php-version'
+              --exclude='.nvmrc'
+              --exclude='.node-version'
+            )
+          fi
+
+          rsync "${RSYNC_ARGS[@]}"
+
+          cd dist
+          zip -r "${ASSET_NAME}" "${PLUGIN_SLUG}"
+
+      - name: Generate checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum "dist/${ASSET_NAME}" > "dist/${ASSET_NAME}.sha256"
+
+      - name: Upload zip to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.ASSET_NAME }}.sha256
+          fail_on_unmatched_files: true
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
