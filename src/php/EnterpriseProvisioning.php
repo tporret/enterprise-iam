@@ -22,10 +22,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class EnterpriseProvisioning {
 
-	private const META_SSO_PROVIDER = '_enterprise_auth_sso_provider';
-	private const META_IDP_UID      = '_enterprise_auth_idp_uid';
-	private const META_IDP_ISSUER   = '_enterprise_auth_idp_issuer';
-
 	/**
 	 * Ordered role hierarchy from highest to lowest privilege.
 	 * Used to enforce the role ceiling.
@@ -68,10 +64,10 @@ final class EnterpriseProvisioning {
 
 			// Verify the issuer hasn't changed (iss+sub composite check).
 			if ( '' !== $idp_issuer ) {
-				$stored_issuer = get_user_meta( $user->ID, self::META_IDP_ISSUER, true );
+				$stored_issuer = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), true );
 				if ( '' === $stored_issuer ) {
 					// Back-fill issuer for accounts created before this check.
-					update_user_meta( $user->ID, self::META_IDP_ISSUER, $idp_issuer );
+					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
 				} elseif ( $stored_issuer !== $idp_issuer ) {
 					return new \WP_Error(
 						'enterprise_provision',
@@ -94,6 +90,11 @@ final class EnterpriseProvisioning {
 
 			$user = get_user_by( 'email', $email );
 
+			// Multisite: user exists globally but isn't on this site — treat as new.
+			if ( is_multisite() && $user && ! is_user_member_of_blog( $user->ID, get_current_blog_id() ) ) {
+				$user = null;
+			}
+
 			if ( $user ) {
 				// Break-glass: reject SSO for administrators / user ID 1.
 				$admin_check = self::reject_if_admin( $user );
@@ -101,7 +102,7 @@ final class EnterpriseProvisioning {
 					return $admin_check;
 				}
 
-				$existing_provider = get_user_meta( $user->ID, self::META_SSO_PROVIDER, true );
+				$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 
 				if ( empty( $existing_provider ) ) {
 					return new \WP_Error(
@@ -119,11 +120,11 @@ final class EnterpriseProvisioning {
 
 				// The user exists and belongs to this IdP but has no UID stored yet.
 				// Bind the immutable UID and issuer now.
-				$stored_uid = get_user_meta( $user->ID, self::META_IDP_UID, true );
+				$stored_uid = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );
 				if ( '' === $stored_uid ) {
-					update_user_meta( $user->ID, self::META_IDP_UID, $idp_uid );
+					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
 					if ( '' !== $idp_issuer ) {
-						update_user_meta( $user->ID, self::META_IDP_ISSUER, $idp_issuer );
+						update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
 					}
 				} elseif ( $stored_uid !== $idp_uid ) {
 					// UID mismatch — possible IdP spoofing.
@@ -146,13 +147,18 @@ final class EnterpriseProvisioning {
 
 			$user = get_user_by( 'email', $email );
 
+			// Multisite: user exists globally but isn't on this site — treat as new.
+			if ( is_multisite() && $user && ! is_user_member_of_blog( $user->ID, get_current_blog_id() ) ) {
+				$user = null;
+			}
+
 			if ( $user ) {
 				$admin_check = self::reject_if_admin( $user );
 				if ( is_wp_error( $admin_check ) ) {
 					return $admin_check;
 				}
 
-				$existing_provider = get_user_meta( $user->ID, self::META_SSO_PROVIDER, true );
+				$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 
 				if ( empty( $existing_provider ) ) {
 					return new \WP_Error(
@@ -194,7 +200,11 @@ final class EnterpriseProvisioning {
 			// Re-check after acquiring the lock — the other thread may
 			// have already created the user while we waited.
 			$user = get_user_by( 'email', $email );
-			if ( $user ) {
+
+			// Determine if the user is actually on this blog (Multisite).
+			$on_this_blog = $user && ( ! is_multisite() || is_user_member_of_blog( $user->ID, get_current_blog_id() ) );
+
+			if ( $user && $on_this_blog ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
 
@@ -204,12 +214,34 @@ final class EnterpriseProvisioning {
 				if ( is_wp_error( $admin_check ) ) {
 					return $admin_check;
 				}
-				$existing_provider = get_user_meta( $user->ID, self::META_SSO_PROVIDER, true );
+				$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 				if ( ! empty( $existing_provider ) && $existing_provider !== $idp_id ) {
 					return new \WP_Error(
 						'enterprise_provision',
 						'This account is managed by a different identity provider.'
 					);
+				}
+			} elseif ( $user && ! $on_this_blog ) {
+				// Multisite: user exists globally but not on this blog.
+				// Add them instead of creating a duplicate account.
+				$admin_check = self::reject_if_admin( $user );
+				if ( is_wp_error( $admin_check ) ) {
+					// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+					$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
+					return $admin_check;
+				}
+				add_user_to_blog( get_current_blog_id(), $user->ID, 'subscriber' );
+
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
+
+				// Bind site-scoped SSO identity meta for this blog.
+				update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), $idp_id );
+				if ( '' !== $idp_uid ) {
+					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
+				}
+				if ( '' !== $idp_issuer ) {
+					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
 				}
 			} else {
 				$username   = self::generate_username( $email );
@@ -241,12 +273,12 @@ final class EnterpriseProvisioning {
 				}
 
 				$user = get_user_by( 'id', $user_id );
-				update_user_meta( $user_id, self::META_SSO_PROVIDER, $idp_id );
+				update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), $idp_id );
 				if ( '' !== $idp_uid ) {
-					update_user_meta( $user_id, self::META_IDP_UID, $idp_uid );
+					update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
 				}
 				if ( '' !== $idp_issuer ) {
-					update_user_meta( $user_id, self::META_IDP_ISSUER, $idp_issuer );
+					update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
 				}
 			}
 		}
@@ -256,13 +288,13 @@ final class EnterpriseProvisioning {
 
 		// ── Session control ─────────────────────────────────────────────
 		// Record the SSO login timestamp for session timeout enforcement.
-		update_user_meta( $user->ID, '_enterprise_auth_sso_login_at', time() );
+		update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ), time() );
 
 		// If the IdP provided a session expiry (SAML SessionNotOnOrAfter),
 		// store it so the session-check hook can honour it.
 		$session_expires = $attributes['session_not_on_or_after'] ?? 0;
 		if ( $session_expires > 0 ) {
-			update_user_meta( $user->ID, '_enterprise_auth_session_expires', (int) $session_expires );
+			update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ), (int) $session_expires );
 		}
 
 		// Use a browser-session cookie (not persistent "remember me") so
@@ -326,11 +358,11 @@ final class EnterpriseProvisioning {
 				'meta_query' => array(
 					'relation' => 'AND',
 					array(
-						'key'   => self::META_IDP_UID,
+						'key'   => SiteMetaKeys::key( SiteMetaKeys::IDP_UID ),
 						'value' => $idp_uid,
 					),
 					array(
-						'key'   => self::META_SSO_PROVIDER,
+						'key'   => SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ),
 						'value' => $idp_id,
 					),
 				),
@@ -437,6 +469,12 @@ final class EnterpriseProvisioning {
 	private static function cap_role( string $role ): string {
 		$settings = SettingsController::read();
 		$ceiling  = $settings['role_ceiling'] ?? 'editor';
+
+		// Multisite: never grant 'administrator' via SSO/SCIM to prevent
+		// Site Admin escalation toward network-level (Super Admin) privileges.
+		if ( is_multisite() && 'administrator' === $role ) {
+			return $ceiling;
+		}
 
 		$role_level    = self::ROLE_HIERARCHY[ $role ] ?? 0;
 		$ceiling_level = self::ROLE_HIERARCHY[ $ceiling ] ?? self::ROLE_HIERARCHY['editor'];

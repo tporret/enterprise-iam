@@ -8,6 +8,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use EnterpriseAuth\Plugin\SiteMetaKeys;
+
 /**
  * SCIM 2.0 Provisioning Endpoint.
  *
@@ -22,15 +24,24 @@ final class ScimController {
 	private const NAMESPACE    = 'enterprise-auth/v1';
 	private const TOKEN_KEY    = 'enterprise_iam_scim_token';
 	private const RATE_LIMIT   = 300; // requests per minute
-	private const META_SCIM_ID = 'enterprise_iam_scim_id';
 
 	/**
-	 * Check whether a user was provisioned via SCIM.
+	 * Check whether a user was provisioned via SCIM on the current site.
 	 */
 	private static function is_scim_managed( \WP_User $user ): bool {
-		$provider = get_user_meta( $user->ID, '_enterprise_auth_sso_provider', true );
-		$scim_id  = get_user_meta( $user->ID, self::META_SCIM_ID, true );
+		$provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
+		$scim_id  = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), true );
 		return 'scim' === $provider || '' !== $scim_id;
+	}
+
+	/**
+	 * Verify the user belongs to the current blog in Multisite.
+	 */
+	private static function is_on_current_blog( int $user_id ): bool {
+		if ( ! is_multisite() ) {
+			return true;
+		}
+		return is_user_member_of_blog( $user_id, get_current_blog_id() );
 	}
 
 	// ── Route registration ──────────────────────────────────────────────
@@ -202,7 +213,7 @@ final class ScimController {
 
 		// Check by email / userName.
 		$existing = get_user_by( 'email', $user_name );
-		if ( $existing ) {
+		if ( $existing && self::is_on_current_blog( $existing->ID ) ) {
 			return self::scim_error_response( new \WP_Error(
 				'scim_conflict',
 				sprintf( 'A user with userName "%s" already exists (WP ID %d).', $user_name, $existing->ID ),
@@ -249,9 +260,9 @@ final class ScimController {
 
 		// Store SCIM binding meta.
 		if ( '' !== $external_id ) {
-			update_user_meta( $user_id, self::META_SCIM_ID, $external_id );
+			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), $external_id );
 		}
-		update_user_meta( $user_id, '_enterprise_auth_sso_provider', 'scim' );
+		update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), 'scim' );
 
 		$user = get_user_by( 'id', $user_id );
 
@@ -267,7 +278,7 @@ final class ScimController {
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
 
-		if ( ! $user || ! self::is_scim_managed( $user ) ) {
+		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
 			return self::scim_error_response( new \WP_Error(
 				'scim_not_found',
 				sprintf( 'User %d not found.', $wp_user_id ),
@@ -286,7 +297,7 @@ final class ScimController {
 
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
-		if ( ! $user || ! self::is_scim_managed( $user ) ) {
+		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
 			return self::scim_error_response( new \WP_Error(
 				'scim_not_found',
 				sprintf( 'User %d not found.', $wp_user_id ),
@@ -363,14 +374,14 @@ final class ScimController {
 		// When the user is being suspended (active=false), destroy all
 		// active sessions and flag the account — mirrors PATCH behaviour.
 		if ( ! $active ) {
-			update_user_meta( $user->ID, 'is_scim_suspended', 'true' );
+			update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), 'true' );
 			\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
 		} else {
-			delete_user_meta( $user->ID, 'is_scim_suspended' );
+			delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
 		}
 
 		if ( '' !== $external_id ) {
-			update_user_meta( $user->ID, self::META_SCIM_ID, $external_id );
+			update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), $external_id );
 		}
 
 		$user = get_user_by( 'id', $user->ID );
@@ -386,7 +397,7 @@ final class ScimController {
 
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
-		if ( ! $user || ! self::is_scim_managed( $user ) ) {
+		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
 			return self::scim_error_response( new \WP_Error(
 				'scim_not_found',
 				sprintf( 'User %d not found.', $wp_user_id ),
@@ -436,12 +447,12 @@ final class ScimController {
 				if ( ! $active ) {
 					// Suspend: remove all roles, flag, and destroy active sessions.
 					$user->set_role( '' );
-					update_user_meta( $user->ID, 'is_scim_suspended', 'true' );
+					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), 'true' );
 					\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
 				} else {
 					// Reactivate: restore default role and clear the flag.
 					$user->set_role( 'subscriber' );
-					delete_user_meta( $user->ID, 'is_scim_suspended' );
+					delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
 				}
 			}
 
@@ -454,11 +465,11 @@ final class ScimController {
 
 				if ( ! $active ) {
 					$user->set_role( '' );
-					update_user_meta( $user->ID, 'is_scim_suspended', 'true' );
+					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), 'true' );
 					\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
 				} else {
 					$user->set_role( 'subscriber' );
-					delete_user_meta( $user->ID, 'is_scim_suspended' );
+					delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
 				}
 			}
 		}
@@ -631,7 +642,7 @@ final class ScimController {
 			}
 
 			$user = get_user_by( 'id', $user_id );
-			if ( ! $user ) {
+			if ( ! $user || ! self::is_on_current_blog( $user->ID ) ) {
 				continue;
 			}
 
@@ -819,7 +830,7 @@ final class ScimController {
 
 		$users = get_users(
 			array(
-				'meta_key'   => self::META_SCIM_ID,
+				'meta_key'   => SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ),
 				'meta_value' => $external_id,
 				'number'     => 1,
 				'fields'     => 'all',
@@ -853,7 +864,7 @@ final class ScimController {
 	 * @return array<string, mixed>
 	 */
 	private static function format_scim_user( \WP_User $user ): array {
-		$scim_id = get_user_meta( $user->ID, self::META_SCIM_ID, true );
+		$scim_id = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), true );
 
 		$resource = array(
 			'schemas'    => array( 'urn:ietf:params:scim:schemas:core:2.0:User' ),

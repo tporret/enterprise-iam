@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\IdpManager;
+use EnterpriseAuth\Plugin\SiteMetaKeys;
 
 /**
  * Intelligent Domain Routing.
@@ -71,8 +72,14 @@ final class LoginRouter {
 		// locally (password / passkey). This preserves break-glass admin
 		// access and any other intentionally-local accounts on SSO domains.
 		$wp_user = get_user_by( 'email', $email );
+
+		// Multisite: ignore users not on this site — they'll be JIT provisioned via SSO.
+		if ( is_multisite() && $wp_user && ! is_user_member_of_blog( $wp_user->ID, get_current_blog_id() ) ) {
+			$wp_user = null;
+		}
+
 		if ( $wp_user ) {
-			$existing_provider = get_user_meta( $wp_user->ID, '_enterprise_auth_sso_provider', true );
+			$existing_provider = get_user_meta( $wp_user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 			if ( empty( $existing_provider ) ) {
 				return new \WP_REST_Response(
 					array(

@@ -131,7 +131,7 @@ final class Core {
 	 * @return int
 	 */
 	public function cap_sso_session_lifetime( int $length, int $user_id, bool $remember ): int {
-		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 		if ( empty( $sso_provider ) ) {
 			// Local account — don't interfere with default WP behaviour.
 			return $length;
@@ -157,13 +157,13 @@ final class Core {
 		}
 
 		$user_id     = get_current_user_id();
-		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 		if ( empty( $sso_provider ) ) {
 			return; // Local account.
 		}
 
 		$now      = time();
-		$login_at = (int) get_user_meta( $user_id, '_enterprise_auth_sso_login_at', true );
+		$login_at = (int) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ), true );
 
 		// Check admin-configured session timeout.
 		if ( $login_at > 0 ) {
@@ -177,7 +177,7 @@ final class Core {
 		}
 
 		// Check IdP-mandated session expiry (SAML SessionNotOnOrAfter).
-		$session_expires = (int) get_user_meta( $user_id, '_enterprise_auth_session_expires', true );
+		$session_expires = (int) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ), true );
 		if ( $session_expires > 0 && $now >= $session_expires ) {
 			$this->force_sso_logout( $user_id );
 			return;
@@ -193,7 +193,7 @@ final class Core {
 	 * finishes its logout sequence.
 	 */
 	public function handle_sso_global_logout( int $user_id ): void {
-		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 		if ( empty( $sso_provider ) ) {
 			return; // Local account — no IdP to notify.
 		}
@@ -229,8 +229,8 @@ final class Core {
 
 		if ( '' !== $redirect ) {
 			// Clean up SSO session meta.
-			delete_user_meta( $user_id, '_enterprise_auth_sso_login_at' );
-			delete_user_meta( $user_id, '_enterprise_auth_session_expires' );
+			delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
+			delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
 
 			// Redirect immediately to the IdP logout endpoint.
 			wp_redirect( $redirect );
@@ -247,12 +247,12 @@ final class Core {
 	 */
 	private function force_sso_logout( int $user_id ): void {
 		// Read the SSO provider binding BEFORE destroying the session.
-		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 		$idp          = ! empty( $sso_provider ) ? IdpManager::find( $sso_provider ) : null;
 
 		// Clean up SSO session meta.
-		delete_user_meta( $user_id, '_enterprise_auth_sso_login_at' );
-		delete_user_meta( $user_id, '_enterprise_auth_session_expires' );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
 
 		wp_logout();
 

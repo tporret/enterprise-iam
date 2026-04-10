@@ -138,7 +138,7 @@ final class SecurityManager {
 					return $user;
 				}
 
-				$suspended = get_user_meta( $user->ID, 'is_scim_suspended', true );
+				$suspended = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), true );
 				if ( 'true' === $suspended ) {
 					return new \WP_Error(
 						'account_suspended',
@@ -165,12 +165,12 @@ final class SecurityManager {
 			return false;
 		}
 
-		$idp_uid = get_user_meta( $user_id, '_enterprise_auth_idp_uid', true );
+		$idp_uid = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );
 		if ( '' !== $idp_uid ) {
 			return true;
 		}
 
-		$scim_id = get_user_meta( $user_id, 'enterprise_iam_scim_id', true );
+		$scim_id = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), true );
 		if ( '' !== $scim_id ) {
 			return true;
 		}
