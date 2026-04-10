@@ -66,7 +66,13 @@ final class SamlAcsController {
 				$_POST['RelayState'] = $relay_state;
 			}
 
-			$auth->processResponse();
+			// Retrieve and consume the stored AuthnRequest ID for
+			// InResponseTo validation (prevents unsolicited response replay).
+			$transient_key = 'ea_saml_reqid_' . $idp_id;
+			$request_id    = get_transient( $transient_key );
+			delete_transient( $transient_key );
+
+			$auth->processResponse( $request_id ?: null );
 
 			$errors = $auth->getErrors();
 			if ( ! empty( $errors ) ) {
@@ -169,15 +175,30 @@ final class SamlAcsController {
 			?? $attrs['memberOf']
 			?? array();
 
-		// Use the SAML NameID as the immutable IdP unique identifier.
-		$name_id = $auth->getNameId();
+		// Prefer a dedicated persistent-identifier attribute if configured,
+		// since SAML NameID is often an email address and therefore mutable.
+		$uid = '';
+		if ( $use_custom && ! empty( $idp['custom_uid_attr'] ) ) {
+			$uid = $attrs[ $idp['custom_uid_attr'] ][0] ?? '';
+		}
+		if ( '' === $uid ) {
+			// Fallback: try well-known persistent-ID attributes.
+			$uid = $attrs['http://schemas.microsoft.com/identity/claims/objectidentifier'][0]
+				?? $attrs['urn:oid:0.9.2342.19200300.100.1.1'][0]  // uid
+				?? '';
+		}
+		if ( '' === $uid ) {
+			// Last resort: NameID.
+			$name_id = $auth->getNameId();
+			$uid     = is_string( $name_id ) ? $name_id : '';
+		}
 
 		return array(
 			'email'          => $email,
 			'first_name'     => $first_name,
 			'last_name'      => $last_name,
 			'groups'         => (array) $groups,
-			'idp_uid'        => is_string( $name_id ) ? $name_id : '',
+			'idp_uid'        => $uid,
 			// SAML assertions are signed by the IdP; the signature verification
 			// performed above inherently vouches for all attribute values
 			// including email. Treat as email_verified unless overridden.

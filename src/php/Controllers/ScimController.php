@@ -24,6 +24,15 @@ final class ScimController {
 	private const RATE_LIMIT   = 300; // requests per minute
 	private const META_SCIM_ID = 'enterprise_iam_scim_id';
 
+	/**
+	 * Check whether a user was provisioned via SCIM.
+	 */
+	private static function is_scim_managed( \WP_User $user ): bool {
+		$provider = get_user_meta( $user->ID, '_enterprise_auth_sso_provider', true );
+		$scim_id  = get_user_meta( $user->ID, self::META_SCIM_ID, true );
+		return 'scim' === $provider || '' !== $scim_id;
+	}
+
 	// ── Route registration ──────────────────────────────────────────────
 
 	public function register_routes(): void {
@@ -115,9 +124,10 @@ final class ScimController {
 		$filter      = sanitize_text_field( $request->get_param( 'filter' ) ?? '' );
 
 		$args = array(
-			'number' => $count,
-			'offset' => $start_index - 1,
-			'fields' => 'all',
+			'number'       => $count,
+			'offset'       => $start_index - 1,
+			'fields'       => 'all',
+			'role__not_in' => array( 'administrator' ),
 		);
 
 		// Support basic "userName eq \"value\"" filter (Okta / Azure AD connection test).
@@ -200,6 +210,16 @@ final class ScimController {
 			) );
 		}
 
+		// Protect against provisioning an email that belongs to an admin.
+		$admin_by_login = get_user_by( 'login', $user_name );
+		if ( $admin_by_login && ( 1 === $admin_by_login->ID || in_array( 'administrator', (array) $admin_by_login->roles, true ) ) ) {
+			return self::scim_error_response( new \WP_Error(
+				'scim_forbidden',
+				'Administrator accounts cannot be provisioned via SCIM.',
+				array( 'status' => 403 )
+			) );
+		}
+
 		// ── Create the WordPress user ───────────────────────────────────
 		$login   = self::generate_username( $user_name );
 		$display = trim( "$given_name $family_name" );
@@ -247,7 +267,7 @@ final class ScimController {
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
 
-		if ( ! $user ) {
+		if ( ! $user || ! self::is_scim_managed( $user ) ) {
 			return self::scim_error_response( new \WP_Error(
 				'scim_not_found',
 				sprintf( 'User %d not found.', $wp_user_id ),
@@ -266,7 +286,7 @@ final class ScimController {
 
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
-		if ( ! $user ) {
+		if ( ! $user || ! self::is_scim_managed( $user ) ) {
 			return self::scim_error_response( new \WP_Error(
 				'scim_not_found',
 				sprintf( 'User %d not found.', $wp_user_id ),
@@ -340,6 +360,15 @@ final class ScimController {
 			) );
 		}
 
+		// When the user is being suspended (active=false), destroy all
+		// active sessions and flag the account — mirrors PATCH behaviour.
+		if ( ! $active ) {
+			update_user_meta( $user->ID, 'is_scim_suspended', 'true' );
+			\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
+		} else {
+			delete_user_meta( $user->ID, 'is_scim_suspended' );
+		}
+
 		if ( '' !== $external_id ) {
 			update_user_meta( $user->ID, self::META_SCIM_ID, $external_id );
 		}
@@ -357,7 +386,7 @@ final class ScimController {
 
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
-		if ( ! $user ) {
+		if ( ! $user || ! self::is_scim_managed( $user ) ) {
 			return self::scim_error_response( new \WP_Error(
 				'scim_not_found',
 				sprintf( 'User %d not found.', $wp_user_id ),
@@ -405,9 +434,10 @@ final class ScimController {
 				}
 
 				if ( ! $active ) {
-					// Suspend: remove all roles and flag the account.
+					// Suspend: remove all roles, flag, and destroy active sessions.
 					$user->set_role( '' );
 					update_user_meta( $user->ID, 'is_scim_suspended', 'true' );
+					\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
 				} else {
 					// Reactivate: restore default role and clear the flag.
 					$user->set_role( 'subscriber' );
@@ -425,6 +455,7 @@ final class ScimController {
 				if ( ! $active ) {
 					$user->set_role( '' );
 					update_user_meta( $user->ID, 'is_scim_suspended', 'true' );
+					\WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
 				} else {
 					$user->set_role( 'subscriber' );
 					delete_user_meta( $user->ID, 'is_scim_suspended' );
@@ -519,6 +550,13 @@ final class ScimController {
 		}
 
 		$members = $body['members'] ?? array();
+		if ( count( $members ) > self::MAX_GROUP_MEMBERS ) {
+			return self::scim_error_response( new \WP_Error(
+				'scim_bad_request',
+				sprintf( 'Too many members. Maximum is %d per operation.', self::MAX_GROUP_MEMBERS ),
+				array( 'status' => 400 )
+			) );
+		}
 		self::apply_group_to_members( $display_name, $members );
 
 		return new \WP_REST_Response( self::format_scim_group( $display_name, $members ), 201 );
@@ -547,7 +585,8 @@ final class ScimController {
 		$display_name = sanitize_text_field( $body['displayName'] ?? '' );
 		$operations   = $body['Operations'] ?? array();
 
-		// Collect members from Operations.
+		// Collect members from Operations, enforcing the member cap early
+		// to prevent unbounded memory allocation from malicious payloads.
 		$members = array();
 		foreach ( $operations as $op ) {
 			$op_type = strtolower( $op['op'] ?? '' );
@@ -557,6 +596,13 @@ final class ScimController {
 			if ( in_array( $op_type, array( 'add', 'replace' ), true ) && 'members' === $path && is_array( $value ) ) {
 				foreach ( $value as $member ) {
 					$members[] = $member;
+					if ( count( $members ) > self::MAX_GROUP_MEMBERS ) {
+						return self::scim_error_response( new \WP_Error(
+							'scim_bad_request',
+							sprintf( 'Too many members. Maximum is %d per operation.', self::MAX_GROUP_MEMBERS ),
+							array( 'status' => 400 )
+						) );
+					}
 				}
 			}
 		}
@@ -574,7 +620,10 @@ final class ScimController {
 	 * @param string  $display_name The SCIM group displayName.
 	 * @param array[] $members      Array of member objects with 'value' (User ID).
 	 */
+	private const MAX_GROUP_MEMBERS = 1000;
+
 	private static function apply_group_to_members( string $display_name, array $members ): void {
+		$members = array_slice( $members, 0, self::MAX_GROUP_MEMBERS );
 		foreach ( $members as $member ) {
 			$user_id = (int) ( $member['value'] ?? 0 );
 			if ( $user_id < 1 ) {

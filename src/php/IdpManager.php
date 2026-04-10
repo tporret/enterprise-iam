@@ -198,6 +198,8 @@ final class IdpManager {
 			'custom_first_name_attr'     => sanitize_text_field( $raw['custom_first_name_attr'] ?? '' ),
 			'custom_last_name_attr'      => sanitize_text_field( $raw['custom_last_name_attr'] ?? '' ),
 			'force_reauth'               => ! empty( $raw['force_reauth'] ),
+			'end_session_endpoint'       => esc_url_raw( $raw['end_session_endpoint'] ?? '' ),
+			'slo_url'                    => esc_url_raw( $raw['slo_url'] ?? '' ),
 		);
 	}
 }

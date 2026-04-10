@@ -20,6 +20,7 @@ const EMPTY_IDP = {
 	token_endpoint: '',
 	userinfo_endpoint: '',
 	jwks_uri: '',
+	end_session_endpoint: '',
 	domain_mapping: [],
 	role_mapping: {},
 	enabled: true,
@@ -123,6 +124,8 @@ export default function OidcSettings( { showToast } ) {
 				userinfo_endpoint:
 					config.userinfo_endpoint || prev.userinfo_endpoint,
 				jwks_uri: config.jwks_uri || prev.jwks_uri,
+				end_session_endpoint:
+					config.end_session_endpoint || prev.end_session_endpoint,
 			} ) );
 
 			showToast( 'Discovery successful — fields auto-filled.' );
@@ -410,6 +413,23 @@ export default function OidcSettings( { showToast } ) {
 						When enabled, the OIDC authorization request includes
 						prompt=login, requiring the user to re-authenticate at
 						the IdP even if they have an active session.
+					</p>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">End Session Endpoint (Logout)</label>
+					<input
+						type="text"
+						className="ea-input"
+						placeholder="https://dev-1234.okta.com/oauth2/default/v1/logout"
+						value={ editing.end_session_endpoint || '' }
+						onChange={ ( e ) =>
+							updateField( 'end_session_endpoint', e.target.value )
+						}
+					/>
+					<p className="ea-label__hint" style={ { margin: '4px 0 0' } }>
+						When set, WordPress logout will also terminate the IdP
+						session (RP-Initiated Logout). Auto-filled by Discovery.
 					</p>
 				</div>
 

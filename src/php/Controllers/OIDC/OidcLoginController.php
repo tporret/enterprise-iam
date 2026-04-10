@@ -79,6 +79,10 @@ final class OidcLoginController {
 			$state = bin2hex( random_bytes( 16 ) );
 			$nonce = bin2hex( random_bytes( 16 ) );
 
+			// ── PKCE (RFC 7636) — S256 challenge ────────────────────
+			$code_verifier  = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+			$code_challenge = rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' );
+
 			// Store state + nonce + IdP ID in a WP Transient (5-minute TTL).
 			set_transient(
 				'ea_oidc_state_' . $state,
@@ -91,14 +95,15 @@ final class OidcLoginController {
 				300
 			);
 
-			// Write state/nonce to PHP session so the library's protected
-			// getState()/getNonce() can read them on the callback request.
+			// Write state/nonce/verifier to PHP session so the library's
+			// protected getState()/getNonce() can read them on the callback.
 			if ( PHP_SESSION_NONE === session_status() ) {
 				session_start();
 				session_regenerate_id( true );
 			}
-			$_SESSION['openid_connect_state'] = $state;
-			$_SESSION['openid_connect_nonce'] = $nonce;
+			$_SESSION['openid_connect_state']         = $state;
+			$_SESSION['openid_connect_nonce']         = $nonce;
+			$_SESSION['openid_connect_code_verifier'] = $code_verifier;
 			session_write_close();
 
 			// If the IdP has explicit endpoint overrides, configure them
@@ -125,12 +130,14 @@ final class OidcLoginController {
 			}
 
 			$auth_params = array(
-				'response_type' => 'code',
-				'client_id'     => $client_id,
-				'redirect_uri'  => $redirect_uri,
-				'scope'         => 'openid email profile',
-				'state'         => $state,
-				'nonce'         => $nonce,
+				'response_type'         => 'code',
+				'client_id'             => $client_id,
+				'redirect_uri'          => $redirect_uri,
+				'scope'                 => 'openid email profile',
+				'state'                 => $state,
+				'nonce'                 => $nonce,
+				'code_challenge'        => $code_challenge,
+				'code_challenge_method' => 'S256',
 			);
 
 			if ( ! empty( $idp['force_reauth'] ) ) {

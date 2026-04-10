@@ -61,6 +61,9 @@ final class Core {
 		add_filter( 'auth_cookie_expiration', array( $this, 'cap_sso_session_lifetime' ), 10, 3 );
 		add_action( 'init', array( $this, 'enforce_sso_session_expiry' ) );
 
+		// Global logout — redirect to IdP EndSession/SLO on user-initiated logout.
+		add_action( 'wp_logout', array( $this, 'handle_sso_global_logout' ), 5 );
+
 		// Seamless SSO re-auth — intercept wp-login.php and redirect
 		// SSO users back to their IdP instead of showing the local form.
 		add_action( 'login_init', array( $this, 'intercept_login_for_sso_reauth' ) );
@@ -182,6 +185,60 @@ final class Core {
 	}
 
 	/**
+	 * Handle Global Logout for SSO users.
+	 *
+	 * Fires on the `wp_logout` action (user-initiated logout). Stores
+	 * the IdP logout redirect URL in a transient so it can be picked up
+	 * by the `login_redirect` or `wp_redirect` filter after WP core
+	 * finishes its logout sequence.
+	 */
+	public function handle_sso_global_logout( int $user_id ): void {
+		$sso_provider = get_user_meta( $user_id, '_enterprise_auth_sso_provider', true );
+		if ( empty( $sso_provider ) ) {
+			return; // Local account — no IdP to notify.
+		}
+
+		$idp = IdpManager::find( $sso_provider );
+		if ( ! $idp || empty( $idp['enabled'] ) ) {
+			return;
+		}
+
+		$protocol = $idp['protocol'] ?? '';
+		$redirect = '';
+
+		// OIDC RP-Initiated Logout.
+		if ( 'oidc' === $protocol && ! empty( $idp['end_session_endpoint'] ) ) {
+			$redirect = add_query_arg(
+				array(
+					'post_logout_redirect_uri' => rawurlencode( wp_login_url() ),
+					'client_id'                => rawurlencode( $idp['client_id'] ?? '' ),
+				),
+				$idp['end_session_endpoint']
+			);
+		}
+
+		// SAML Single Logout.
+		if ( 'saml' === $protocol && ! empty( $idp['slo_url'] ) ) {
+			$redirect = add_query_arg(
+				array(
+					'RelayState' => rawurlencode( wp_login_url() ),
+				),
+				$idp['slo_url']
+			);
+		}
+
+		if ( '' !== $redirect ) {
+			// Clean up SSO session meta.
+			delete_user_meta( $user_id, '_enterprise_auth_sso_login_at' );
+			delete_user_meta( $user_id, '_enterprise_auth_session_expires' );
+
+			// Redirect immediately to the IdP logout endpoint.
+			wp_redirect( $redirect );
+			exit;
+		}
+	}
+
+	/**
 	 * Destroy the WordPress session and redirect to the IdP for re-auth.
 	 *
 	 * If the user's last-used IdP is known (via cookie or usermeta),
@@ -199,9 +256,39 @@ final class Core {
 
 		wp_logout();
 
-		// If the IdP is still valid and enabled, redirect directly for re-auth.
+		// ── Global Logout: redirect to IdP EndSession / SLO endpoint ────
+		// If the IdP provides a logout endpoint, redirect there so the
+		// browser session at the IdP is also terminated (prevents the
+		// "next user auto-login" attack).
 		if ( $idp && ! empty( $idp['enabled'] ) ) {
 			$protocol = $idp['protocol'] ?? '';
+
+			// OIDC RP-Initiated Logout (RFC 9207 / OpenID Connect RP-Initiated Logout 1.0).
+			if ( 'oidc' === $protocol && ! empty( $idp['end_session_endpoint'] ) ) {
+				$redirect = add_query_arg(
+					array(
+						'post_logout_redirect_uri' => rawurlencode( wp_login_url() ),
+						'client_id'                => rawurlencode( $idp['client_id'] ?? '' ),
+					),
+					$idp['end_session_endpoint']
+				);
+				wp_safe_redirect( $redirect );
+				exit;
+			}
+
+			// SAML Single Logout (SLO) — redirect to the IdP's SLO URL.
+			if ( 'saml' === $protocol && ! empty( $idp['slo_url'] ) ) {
+				$redirect = add_query_arg(
+					array(
+						'RelayState' => rawurlencode( wp_login_url() ),
+					),
+					$idp['slo_url']
+				);
+				wp_safe_redirect( $redirect );
+				exit;
+			}
+
+			// Fallback: redirect to SSO login for re-auth.
 			if ( 'saml' === $protocol ) {
 				$redirect = rest_url( 'enterprise-auth/v1/saml/login?idp_id=' . rawurlencode( $idp['id'] ) );
 			} elseif ( 'oidc' === $protocol ) {

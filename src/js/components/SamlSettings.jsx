@@ -15,6 +15,7 @@ const EMPTY_IDP = {
 	protocol: 'saml',
 	entity_id: '',
 	sso_url: '',
+	slo_url: '',
 	certificate: '',
 	domain_mapping: [],
 	role_mapping: {},
@@ -215,11 +216,35 @@ export default function SamlSettings( { showToast } ) {
 						)[ 0 ];
 					const certificate = certEl?.textContent?.trim() || '';
 
+					// SLO URL — from <SingleLogoutService Location="...">
+					const sloElements = [
+						...doc.querySelectorAll( 'SingleLogoutService' ),
+						...doc.getElementsByTagNameNS(
+							'urn:oasis:names:tc:SAML:2.0:metadata',
+							'SingleLogoutService'
+						),
+					];
+					let sloUrl = '';
+					for ( const el of sloElements ) {
+						const binding = el.getAttribute( 'Binding' ) || '';
+						const loc = el.getAttribute( 'Location' ) || '';
+						if (
+							binding.includes( 'HTTP-Redirect' ) ||
+							! sloUrl
+						) {
+							sloUrl = loc;
+						}
+						if ( binding.includes( 'HTTP-Redirect' ) ) {
+							break;
+						}
+					}
+
 					// Auto-fill the form.
 					setEditing( ( prev ) => ( {
 						...prev,
 						entity_id: entityId || prev.entity_id,
 						sso_url: ssoUrl || prev.sso_url,
+						slo_url: sloUrl || prev.slo_url,
 						certificate: certificate || prev.certificate,
 					} ) );
 
@@ -460,6 +485,23 @@ export default function SamlSettings( { showToast } ) {
 						When enabled, SAML AuthnRequests include ForceAuthn=true,
 						requiring the user to re-authenticate at the IdP even if
 						they have an active IdP session.
+					</p>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">Single Logout (SLO) URL</label>
+					<input
+						type="text"
+						className="ea-input"
+						placeholder="https://idp.example.com/saml/slo"
+						value={ editing.slo_url || '' }
+						onChange={ ( e ) =>
+							updateField( 'slo_url', e.target.value )
+						}
+					/>
+					<p className="ea-label__hint" style={ { margin: '4px 0 0' } }>
+						When set, WordPress logout will redirect to the IdP&rsquo;s
+						SLO endpoint to also terminate the IdP session.
 					</p>
 				</div>
 

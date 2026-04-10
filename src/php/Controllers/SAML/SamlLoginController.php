@@ -78,6 +78,16 @@ final class SamlLoginController {
 				);
 			}
 
+			// Persist the AuthnRequest ID so the ACS can validate InResponseTo.
+			$request_id = $auth->getLastRequestID();
+			if ( $request_id ) {
+				set_transient(
+					'ea_saml_reqid_' . $idp_id,
+					$request_id,
+					300 // 5-minute TTL — matches typical SAML NotOnOrAfter window.
+				);
+			}
+
 			return new \WP_REST_Response( null, 302, array( 'Location' => $sso_url ) );
 		} catch ( \Throwable $e ) {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {

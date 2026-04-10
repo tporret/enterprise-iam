@@ -180,38 +180,74 @@ final class EnterpriseProvisioning {
 				);
 			}
 
-			$username   = self::generate_username( $email );
-			$password   = wp_generate_password( 32, true, true );
-			$first_name = sanitize_text_field( $attributes['first_name'] ?? '' );
-			$last_name  = sanitize_text_field( $attributes['last_name'] ?? '' );
-			$display    = trim( "$first_name $last_name" );
-			if ( '' === $display ) {
-				$display = $username;
-			}
-
-			$user_id = wp_insert_user(
-				array(
-					'user_login'   => $username,
-					'user_email'   => $email,
-					'user_pass'    => $password,
-					'first_name'   => $first_name,
-					'last_name'    => $last_name,
-					'display_name' => $display,
-					'role'         => 'subscriber',
-				)
+			// ── TOCTOU guard: use a DB-level lock to prevent duplicate
+			// accounts when two identical SSO assertions arrive at the
+			// same millisecond for a first-time user. The lock serialises
+			// the check-email + insert-user window per email address.
+			global $wpdb;
+			$lock_key = 'ea_jit_' . md5( $email );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$locked = $wpdb->query(
+				$wpdb->prepare( "SELECT GET_LOCK(%s, 5)", $lock_key )
 			);
 
-			if ( is_wp_error( $user_id ) ) {
-				return $user_id;
-			}
+			// Re-check after acquiring the lock — the other thread may
+			// have already created the user while we waited.
+			$user = get_user_by( 'email', $email );
+			if ( $user ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
 
-			$user = get_user_by( 'id', $user_id );
-			update_user_meta( $user_id, self::META_SSO_PROVIDER, $idp_id );
-			if ( '' !== $idp_uid ) {
-				update_user_meta( $user_id, self::META_IDP_UID, $idp_uid );
-			}
-			if ( '' !== $idp_issuer ) {
-				update_user_meta( $user_id, self::META_IDP_ISSUER, $idp_issuer );
+				// The parallel thread created the account; verify it is
+				// SSO-managed and belongs to this IdP before proceeding.
+				$admin_check = self::reject_if_admin( $user );
+				if ( is_wp_error( $admin_check ) ) {
+					return $admin_check;
+				}
+				$existing_provider = get_user_meta( $user->ID, self::META_SSO_PROVIDER, true );
+				if ( ! empty( $existing_provider ) && $existing_provider !== $idp_id ) {
+					return new \WP_Error(
+						'enterprise_provision',
+						'This account is managed by a different identity provider.'
+					);
+				}
+			} else {
+				$username   = self::generate_username( $email );
+				$password   = wp_generate_password( 32, true, true );
+				$first_name = sanitize_text_field( $attributes['first_name'] ?? '' );
+				$last_name  = sanitize_text_field( $attributes['last_name'] ?? '' );
+				$display    = trim( "$first_name $last_name" );
+				if ( '' === $display ) {
+					$display = $username;
+				}
+
+				$user_id = wp_insert_user(
+					array(
+						'user_login'   => $username,
+						'user_email'   => $email,
+						'user_pass'    => $password,
+						'first_name'   => $first_name,
+						'last_name'    => $last_name,
+						'display_name' => $display,
+						'role'         => 'subscriber',
+					)
+				);
+
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
+
+				if ( is_wp_error( $user_id ) ) {
+					return $user_id;
+				}
+
+				$user = get_user_by( 'id', $user_id );
+				update_user_meta( $user_id, self::META_SSO_PROVIDER, $idp_id );
+				if ( '' !== $idp_uid ) {
+					update_user_meta( $user_id, self::META_IDP_UID, $idp_uid );
+				}
+				if ( '' !== $idp_issuer ) {
+					update_user_meta( $user_id, self::META_IDP_ISSUER, $idp_issuer );
+				}
 			}
 		}
 

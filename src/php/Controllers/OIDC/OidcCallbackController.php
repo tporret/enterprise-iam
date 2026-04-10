@@ -115,6 +115,10 @@ final class OidcCallbackController {
 			$redirect_uri = rest_url( 'enterprise-auth/v1/oidc/callback' );
 			$oidc->setRedirectURL( $redirect_uri );
 
+			// Enable PKCE so the library sends the code_verifier from
+			// $_SESSION during the token exchange (RFC 7636).
+			$oidc->setCodeChallengeMethod( 'S256' );
+
 			// Configure explicit provider endpoints if available so the
 			// library doesn't need to perform discovery.
 			if ( ! empty( $idp['authorization_endpoint'] ) ) {
@@ -188,6 +192,13 @@ final class OidcCallbackController {
 
 			// Check whether the IdP has verified the user's email address.
 			$email_verified = $oidc->getVerifiedClaims( 'email_verified' );
+
+			// ── Explicit issuer validation (defense-in-depth) ───────
+			$configured_issuer = rtrim( (string) $issuer, '/' );
+			$token_issuer      = rtrim( (string) $iss, '/' );
+			if ( '' !== $configured_issuer && '' !== $token_issuer && $configured_issuer !== $token_issuer ) {
+				return $this->error_redirect( 'OIDC issuer mismatch: token issuer does not match configured IdP.' );
+			}
 
 			$attributes = array(
 				'email'          => sanitize_email( $email ),
