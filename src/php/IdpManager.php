@@ -36,6 +36,27 @@ final class IdpManager {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public static function all(): array {
+		$all = self::all_raw();
+
+		// Decrypt client_secret for runtime use.
+		foreach ( $all as &$idp ) {
+			if ( isset( $idp['client_secret'] ) ) {
+				$idp['client_secret'] = Encryption::decrypt( $idp['client_secret'] );
+			}
+		}
+		unset( $idp );
+
+		return $all;
+	}
+
+	/**
+	 * Return all IdP configurations without decrypting secrets.
+	 *
+	 * Used internally by save() to avoid double-encrypting.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function all_raw(): array {
 		$raw = get_option( self::OPTION_KEY, array() );
 		return is_array( $raw ) ? $raw : array();
 	}
@@ -83,7 +104,12 @@ final class IdpManager {
 	 * @param array<string, mixed> $idp
 	 */
 	public static function save( array $idp ): void {
-		$all   = self::all();
+		// Encrypt client_secret before persisting to the database.
+		if ( isset( $idp['client_secret'] ) && '' !== $idp['client_secret'] ) {
+			$idp['client_secret'] = Encryption::encrypt( $idp['client_secret'] );
+		}
+
+		$all   = self::all_raw();
 		$found = false;
 
 		foreach ( $all as $i => $existing ) {
@@ -105,7 +131,7 @@ final class IdpManager {
 	 * Delete an IdP configuration by id.
 	 */
 	public static function delete( string $id ): bool {
-		$all      = self::all();
+		$all      = self::all_raw();
 		$filtered = array_filter( $all, static fn( array $idp ) => ( $idp['id'] ?? '' ) !== $id );
 
 		if ( count( $filtered ) === count( $all ) ) {

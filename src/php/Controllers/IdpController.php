@@ -93,6 +93,9 @@ final class IdpController {
 		$sanitized = IdpManager::sanitize( $raw );
 		IdpManager::save( $sanitized );
 
+		// Never return client_secret in the response.
+		$sanitized['client_secret'] = ! empty( $sanitized['client_secret'] ) ? '••••••••' : '';
+
 		return new \WP_REST_Response( $sanitized, 200 );
 	}
 

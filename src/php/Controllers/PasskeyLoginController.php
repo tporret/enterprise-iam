@@ -174,8 +174,12 @@ final class PasskeyLoginController {
 				$user_handle,
 			);
 		} catch ( \Throwable $e ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – Passkey login error: ' . $e->getMessage() );
+			}
 			return new \WP_REST_Response(
-				array( 'error' => 'Assertion verification failed: ' . $e->getMessage() ),
+				array( 'error' => 'Passkey login failed. Please try again.' ),
 				400
 			);
 		}
@@ -195,8 +199,8 @@ final class PasskeyLoginController {
 			return new \WP_REST_Response( array( 'error' => 'User not found.' ), 400 );
 		}
 
-		// Log the user in.
-		wp_set_auth_cookie( $wp_user_id, true, is_ssl() );
+		// Log the user in (session cookie, not persistent "remember me").
+		wp_set_auth_cookie( $wp_user_id, false, is_ssl() );
 		do_action( 'wp_login', get_userdata( $wp_user_id )->user_login, get_userdata( $wp_user_id ) );
 
 		return new \WP_REST_Response(

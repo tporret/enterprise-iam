@@ -80,8 +80,12 @@ final class SamlLoginController {
 
 			return new \WP_REST_Response( null, 302, array( 'Location' => $sso_url ) );
 		} catch ( \Throwable $e ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – SAML login error: ' . $e->getMessage() );
+			}
 			return new \WP_REST_Response(
-				array( 'error' => 'Failed to initiate SAML login: ' . $e->getMessage() ),
+				array( 'error' => 'Failed to initiate SAML login. Please contact your administrator.' ),
 				500
 			);
 		}

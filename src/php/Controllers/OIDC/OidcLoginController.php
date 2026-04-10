@@ -95,6 +95,7 @@ final class OidcLoginController {
 			// getState()/getNonce() can read them on the callback request.
 			if ( PHP_SESSION_NONE === session_status() ) {
 				session_start();
+				session_regenerate_id( true );
 			}
 			$_SESSION['openid_connect_state'] = $state;
 			$_SESSION['openid_connect_nonce'] = $nonce;
@@ -140,8 +141,12 @@ final class OidcLoginController {
 
 			return new \WP_REST_Response( null, 302, array( 'Location' => $auth_url ) );
 		} catch ( \Throwable $e ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – OIDC login error: ' . $e->getMessage() );
+			}
 			return new \WP_REST_Response(
-				array( 'error' => 'Failed to initiate OIDC login: ' . $e->getMessage() ),
+				array( 'error' => 'Failed to initiate OIDC login. Please contact your administrator.' ),
 				500
 			);
 		}

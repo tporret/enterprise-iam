@@ -102,7 +102,11 @@ final class SamlAcsController {
 
 			return $this->success_redirect();
 		} catch ( \Throwable $e ) {
-			return $this->error_redirect( 'SAML processing error: ' . $e->getMessage() );
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – SAML ACS error: ' . $e->getMessage() );
+			}
+			return $this->error_redirect( 'SAML authentication failed. Please try again or contact your administrator.' );
 		}
 	}
 

@@ -1,0 +1,80 @@
+# =============================================================================
+# .distignore — Enterprise IAM production distribution exclusions
+# Used by wp dist-archive / GitHub Actions to build a lean plugin ZIP.
+# =============================================================================
+
+# ── Development directories ──────────────────────────────────────────────────
+.docs/
+.git/
+.github/
+.vscode/
+.wordpress-org/
+node_modules/
+src/js/
+
+# ── Dev-only vendor packages (require-dev) ───────────────────────────────────
+vendor/bin/
+vendor/squizlabs/
+vendor/wp-coding-standards/
+vendor/dealerdirect/
+vendor/phpcsstandards/
+vendor/phpstan/
+vendor/phpdocumentor/
+
+# ── Vendor test / doc / CI bloat ─────────────────────────────────────────────
+vendor/*/tests/
+vendor/*/*/tests/
+vendor/*/*/*/tests/
+vendor/*/test/
+vendor/*/*/test/
+vendor/*/.github/
+vendor/*/*/.github/
+vendor/psr/http-message/docs/
+vendor/phpdocumentor/type-resolver/docs/
+vendor/symfony/clock/Test/
+
+# ── Vendor dev files ─────────────────────────────────────────────────────────
+vendor/*/phpunit.xml
+vendor/*/phpunit.xml.dist
+vendor/*/*/phpunit.xml
+vendor/*/*/phpunit.xml.dist
+vendor/*/.editorconfig
+vendor/*/*/.editorconfig
+vendor/*/.gitignore
+vendor/*/*/.gitignore
+vendor/*/.gitattributes
+vendor/*/*/.gitattributes
+vendor/*/Makefile
+vendor/*/*/Makefile
+vendor/*/.php-cs-fixer*
+vendor/*/*/.php-cs-fixer*
+vendor/*/phpcs.xml*
+vendor/*/*/phpcs.xml*
+vendor/*/phpstan*
+vendor/*/*/phpstan*
+vendor/*/CHANGELOG*
+vendor/*/*/CHANGELOG*
+vendor/*/CONTRIBUTING*
+vendor/*/*/CONTRIBUTING*
+vendor/*/UPGRADE*
+vendor/*/*/UPGRADE*
+
+# ── Root config / build tooling files ────────────────────────────────────────
+.distignore
+.editorconfig
+.gitignore
+.gitattributes
+.prettierrc
+.eslintrc*
+.stylelintrc*
+.phpcs.xml
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml.dist
+phpunit.xml*
+webpack.config.js
+Gruntfile.*
+Makefile
+README.md

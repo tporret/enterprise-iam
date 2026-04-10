@@ -176,8 +176,12 @@ final class PasskeyRegistrationController {
 				WebAuthnHelper::rp_id(),
 			);
 		} catch ( \Throwable $e ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – Passkey registration error: ' . $e->getMessage() );
+			}
 			return new \WP_REST_Response(
-				array( 'error' => 'Attestation verification failed: ' . $e->getMessage() ),
+				array( 'error' => 'Passkey registration failed. Please try again.' ),
 				400
 			);
 		}

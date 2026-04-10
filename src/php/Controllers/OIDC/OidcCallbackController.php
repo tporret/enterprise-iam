@@ -208,7 +208,11 @@ final class OidcCallbackController {
 
 			return $this->success_redirect();
 		} catch ( \Throwable $e ) {
-			return $this->error_redirect( 'OIDC authentication failed: ' . $e->getMessage() );
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – OIDC callback error: ' . $e->getMessage() );
+			}
+			return $this->error_redirect( 'OIDC authentication failed. Please try again or contact your administrator.' );
 		}
 	}
 

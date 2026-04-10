@@ -1,26 +1,36 @@
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Editor/IDE
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local environment files
+# ── Local environment files ───────────────────────────────────────────────────
 .env
 .env.*
 
-# Dependencies (install on demand)
+# ── Dependencies (install on demand) ─────────────────────────────────────────
 node_modules/
 vendor/
 
-# Internal project docs
+# ── Build artifacts that shouldn't leak ───────────────────────────────────────
+*.map
+
+# ── PHP / Composer temp files ─────────────────────────────────────────────────
+auth.json
+.phpunit.result.cache
+.php-cs-fixer.cache
+
+# ── Internal project docs (private) ──────────────────────────────────────────
 .docs/

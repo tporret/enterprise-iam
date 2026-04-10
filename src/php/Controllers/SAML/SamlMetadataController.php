@@ -64,8 +64,12 @@ final class SamlMetadataController {
 
 			return $response;
 		} catch ( \Throwable $e ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – SP metadata error: ' . $e->getMessage() );
+			}
 			return new \WP_REST_Response(
-				array( 'error' => 'Failed to generate SP metadata: ' . $e->getMessage() ),
+				array( 'error' => 'Failed to generate SP metadata. Please contact your administrator.' ),
 				500
 			);
 		}
