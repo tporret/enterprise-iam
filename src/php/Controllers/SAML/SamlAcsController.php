@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\FederationErrorHandler;
+use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\IdpManager;
 use EnterpriseAuth\Plugin\EnterpriseProvisioning;
 use EnterpriseAuth\Plugin\SamlSettingsFactory;
@@ -54,14 +55,25 @@ final class SamlAcsController {
 			return $this->error_redirect();
 		}
 
-		// RelayState carries the IdP ID set by SamlLoginController.
-		$idp_id = sanitize_text_field( $relay_state ?? '' );
-		$idp    = IdpManager::find( $idp_id );
-		$log_context['idp_id'] = $idp_id;
-
-		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'saml' ) {
+		$flow_key  = sanitize_text_field( (string) ( $relay_state ?? '' ) );
+		$flow_data = FederationFlowGuard::consume( 'saml', $flow_key );
+		if ( is_wp_error( $flow_data ) ) {
 			$this->log_detailed_error(
-				'SAML ACS could not resolve a valid IdP configuration.',
+				$flow_data->get_error_message(),
+				$log_context + array( 'phase' => 'flow_validation' )
+			);
+			return $this->error_redirect();
+		}
+
+		$idp_id     = sanitize_text_field( (string) ( $flow_data['idp_id'] ?? '' ) );
+		$request_id = sanitize_text_field( (string) ( $flow_data['request_id'] ?? '' ) );
+		$idp        = IdpManager::find( $idp_id );
+		$log_context['idp_id']   = $idp_id;
+		$log_context['flow_key'] = $flow_key;
+
+		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'saml' || '' === $request_id ) {
+			$this->log_detailed_error(
+				'SAML ACS could not resolve a valid IdP configuration or request binding.',
 				$log_context + array( 'phase' => 'idp_resolution' )
 			);
 			return $this->error_redirect();
@@ -78,13 +90,7 @@ final class SamlAcsController {
 				$_POST['RelayState'] = $relay_state;
 			}
 
-			// Retrieve and consume the stored AuthnRequest ID for
-			// InResponseTo validation (prevents unsolicited response replay).
-			$transient_key = self::request_id_transient_key( $idp_id );
-			$request_id    = get_transient( $transient_key );
-			delete_transient( $transient_key );
-
-			$auth->processResponse( $request_id ?: null );
+			$auth->processResponse( $request_id );
 
 			$errors = $auth->getErrors();
 			if ( ! empty( $errors ) ) {
@@ -258,16 +264,4 @@ final class SamlAcsController {
 		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
 	}
 
-	/**
-	 * Blog-scoped transient key for SAML AuthnRequest IDs.
-	 */
-	private static function request_id_transient_key( string $idp_id ): string {
-		$key = 'ea_saml_reqid_' . sanitize_text_field( $idp_id );
-
-		if ( ! is_multisite() ) {
-			return $key;
-		}
-
-		return 'ea_' . get_current_blog_id() . '_' . $key;
-	}
 }

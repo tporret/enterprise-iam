@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\EnterpriseProvisioning;
 use EnterpriseAuth\Plugin\FederationErrorHandler;
+use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\IdpManager;
 use EnterpriseAuth\Plugin\OidcTransientClient;
 
@@ -77,9 +78,9 @@ final class OidcCallbackController {
 		if ( '' !== $error ) {
 			if ( '' !== $state ) {
 				$state_data = $this->consume_state( $state );
-				if ( null === $state_data ) {
+				if ( is_wp_error( $state_data ) ) {
 					$this->log_detailed_error(
-						'OIDC provider returned an error with an invalid or expired state.',
+						$state_data->get_error_message(),
 						array( 'phase' => 'provider_error_state_validation' )
 					);
 					return $this->error_redirect();
@@ -107,8 +108,8 @@ final class OidcCallbackController {
 
 		// ── Validate state (CSRF protection) ────────────────────────────
 		$state_data = $this->consume_state( $state );
-		if ( null === $state_data ) {
-			$this->log_detailed_error( 'Invalid or expired OIDC state.', array( 'phase' => 'state_validation' ) );
+		if ( is_wp_error( $state_data ) ) {
+			$this->log_detailed_error( $state_data->get_error_message(), array( 'phase' => 'state_validation' ) );
 			return $this->error_redirect();
 		}
 
@@ -308,32 +309,16 @@ final class OidcCallbackController {
 	/**
 	 * Validate and consume OIDC state transient (one-time use).
 	 *
-	 * @return array<string, mixed>|null
+	 * @return array<string, mixed>|\WP_Error
 	 */
-	private function consume_state( string $state ): ?array {
-		if ( '' === $state ) {
-			return null;
-		}
-
-		$transient_key = self::verification_transient_key( $state );
-		$state_raw     = get_transient( $transient_key );
-		delete_transient( $transient_key );
-
-		if ( ! $state_raw ) {
-			return null;
-		}
-
-		$state_data = json_decode( (string) $state_raw, true );
-		if ( ! is_array( $state_data ) ) {
-			return null;
-		}
-
-		if ( isset( $state_data['blog_id'] ) && (int) $state_data['blog_id'] !== get_current_blog_id() ) {
-			return null;
+	private function consume_state( string $state ) {
+		$state_data = FederationFlowGuard::consume( 'oidc', $state );
+		if ( is_wp_error( $state_data ) ) {
+			return $state_data;
 		}
 
 		if ( isset( $state_data['state'] ) && (string) $state_data['state'] !== $state ) {
-			return null;
+			return new \WP_Error( 'ea_oidc_state_mismatch', 'OIDC state did not match the stored federation flow.' );
 		}
 
 		return $state_data;
@@ -363,10 +348,4 @@ final class OidcCallbackController {
 		return sanitize_text_field( (string) $parsed_query[ $key ] );
 	}
 
-	/**
-	 * Blog-scoped transient key for OIDC verification state.
-	 */
-	private static function verification_transient_key( string $state ): string {
-		return 'ea_oidc_v_' . get_current_blog_id() . '_' . sanitize_text_field( $state );
-	}
 }

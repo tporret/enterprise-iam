@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\IdpManager;
 use EnterpriseAuth\Plugin\SamlSettingsFactory;
 
@@ -59,12 +60,13 @@ final class SamlLoginController {
 		try {
 			$settings = SamlSettingsFactory::build( $idp );
 			$auth     = new \OneLogin\Saml2\Auth( $settings );
+			$relay_state = bin2hex( random_bytes( 16 ) );
 
 			// The OneLogin library's login() uses $returnTo as the
-			// RelayState value. We pass the IdP ID so the ACS
-			// controller can look up the config after the IdP responds.
+			// RelayState value. We pass a per-request flow key so the ACS
+			// controller can resolve the expected IdP and request binding.
 			$sso_url = $auth->login(
-				$idp_id,                              // returnTo — becomes RelayState (IdP ID)
+				$relay_state,
 				array(),                               // parameters
 				! empty( $idp['force_reauth'] ),       // forceAuthn
 				false,                                 // isPassive
@@ -78,13 +80,34 @@ final class SamlLoginController {
 				);
 			}
 
-			// Persist the AuthnRequest ID so the ACS can validate InResponseTo.
 			$request_id = $auth->getLastRequestID();
-			if ( $request_id ) {
-				set_transient(
-					self::request_id_transient_key( $idp_id ),
-					$request_id,
-					300 // 5-minute TTL — matches typical SAML NotOnOrAfter window.
+			if ( empty( $request_id ) ) {
+				return new \WP_REST_Response(
+					array( 'error' => 'Could not correlate the SAML authentication request.' ),
+					500
+				);
+			}
+
+			$issued = FederationFlowGuard::issue(
+				'saml',
+				$relay_state,
+				array(
+					'idp_id'     => $idp_id,
+					'blog_id'    => get_current_blog_id(),
+					'request_id' => $request_id,
+				),
+				300
+			);
+
+			if ( is_wp_error( $issued ) ) {
+				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+					error_log( 'Enterprise IAM – SAML login error: ' . $issued->get_error_message() );
+				}
+
+				return new \WP_REST_Response(
+					array( 'error' => 'Failed to initiate SAML login. Please contact your administrator.' ),
+					500
 				);
 			}
 
@@ -101,16 +124,4 @@ final class SamlLoginController {
 		}
 	}
 
-	/**
-	 * Blog-scoped transient key for SAML AuthnRequest IDs.
-	 */
-	private static function request_id_transient_key( string $idp_id ): string {
-		$key = 'ea_saml_reqid_' . sanitize_text_field( $idp_id );
-
-		if ( ! is_multisite() ) {
-			return $key;
-		}
-
-		return 'ea_' . get_current_blog_id() . '_' . $key;
-	}
 }

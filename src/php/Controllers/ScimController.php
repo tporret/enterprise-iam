@@ -385,12 +385,8 @@ final class ScimController {
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
 
-		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_not_found',
-				sprintf( 'User %d not found.', $wp_user_id ),
-				array( 'status' => 404 )
-			) );
+		if ( ! self::is_scim_route_user_available( $user ) ) {
+			return self::scim_error_response( self::scim_route_user_unavailable_error() );
 		}
 
 		return new \WP_REST_Response( self::format_scim_user( $user ), 200 );
@@ -404,21 +400,8 @@ final class ScimController {
 
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
-		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_not_found',
-				sprintf( 'User %d not found.', $wp_user_id ),
-				array( 'status' => 404 )
-			) );
-		}
-
-		// Protect administrator / break-glass accounts.
-		if ( 1 === $user->ID || in_array( 'administrator', (array) $user->roles, true ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_forbidden',
-				'Administrator accounts cannot be managed via SCIM.',
-				array( 'status' => 403 )
-			) );
+		if ( ! self::is_scim_route_user_available( $user ) ) {
+			return self::scim_error_response( self::scim_route_user_unavailable_error() );
 		}
 
 		$body = $request->get_json_params();
@@ -515,21 +498,8 @@ final class ScimController {
 
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
-		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_not_found',
-				sprintf( 'User %d not found.', $wp_user_id ),
-				array( 'status' => 404 )
-			) );
-		}
-
-		// Protect administrator / break-glass accounts.
-		if ( 1 === $user->ID || in_array( 'administrator', (array) $user->roles, true ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_forbidden',
-				'Administrator accounts cannot be managed via SCIM.',
-				array( 'status' => 403 )
-			) );
+		if ( ! self::is_scim_route_user_available( $user ) ) {
+			return self::scim_error_response( self::scim_route_user_unavailable_error() );
 		}
 
 		$body = $request->get_json_params();
@@ -618,12 +588,8 @@ final class ScimController {
 		$wp_user_id = (int) $request->get_param( 'id' );
 		$user       = get_user_by( 'id', $wp_user_id );
 
-		if ( ! $user || ! self::is_on_current_blog( $user->ID ) || ! self::is_scim_managed( $user ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_not_found',
-				sprintf( 'User %d not found.', $wp_user_id ),
-				array( 'status' => 404 )
-			) );
+		if ( ! self::is_scim_route_user_available( $user ) ) {
+			return self::scim_error_response( self::scim_route_user_unavailable_error() );
 		}
 
 		$scope       = self::DEPROVISION_SCOPE_NETWORK === $request->get_param( 'scope' ) ? self::DEPROVISION_SCOPE_NETWORK : self::DEPROVISION_SCOPE_SITE;
@@ -635,25 +601,6 @@ final class ScimController {
 				'external_id' => $external_id,
 			)
 		);
-
-		if ( self::is_protected_account( $user->ID, (array) $user->roles ) ) {
-			self::emit_identity_event(
-				'scim_delete_rejected',
-				array_merge(
-					$audit_base,
-					array(
-						'reason' => 'protected_account',
-						'roles'  => array_values( (array) $user->roles ),
-					)
-				)
-			);
-
-			return self::scim_error_response( new \WP_Error(
-				'scim_forbidden',
-				'Administrator accounts cannot be managed via SCIM.',
-				array( 'status' => 403 )
-			) );
-		}
 
 		if ( self::DEPROVISION_SCOPE_NETWORK === $scope ) {
 			if ( ! is_multisite() ) {
@@ -714,35 +661,42 @@ final class ScimController {
 				) );
 			}
 
-			$completed_blog_ids = array();
+			$completed_operations = array();
 			foreach ( $network_plan['blog_operations'] as $site_plan ) {
 				switch_to_blog( (int) $site_plan['blog_id'] );
 				$removed = remove_user_from_blog( $user->ID, (int) $site_plan['blog_id'], (int) $site_plan['reassign_user_id'] );
 				if ( is_wp_error( $removed ) ) {
 					restore_current_blog();
+					$rollback = self::rollback_network_deprovision( $user->ID, $completed_operations );
 					self::emit_identity_event(
 						'scim_delete_failed',
 						array_merge(
 							$audit_base,
 							array(
 								'reason'              => 'remove_user_from_blog_failed',
-								'completed_blog_ids'  => $completed_blog_ids,
+								'completed_blog_ids'  => array_values( array_map( static fn( array $operation ): int => (int) $operation['blog_id'], $completed_operations ) ),
 								'failed_blog_id'      => (int) $site_plan['blog_id'],
 								'failed_blog_message' => $removed->get_error_message(),
+								'rollback'            => $rollback,
 							)
 						)
 					);
 
 					return self::scim_error_response( new \WP_Error(
 						'scim_internal',
-						'Failed to remove user from site ' . (int) $site_plan['blog_id'] . ': ' . $removed->get_error_message(),
+						'Failed to remove user from site ' . (int) $site_plan['blog_id'] . ': ' . $removed->get_error_message()
+						. ( ! empty( $rollback['failed_blog_ids'] ) ? ' Rollback was only partially successful.' : '' ),
 						array( 'status' => 500 )
 					) );
 				}
+				restore_current_blog();
+				$completed_operations[] = $site_plan;
+			}
 
+			foreach ( $completed_operations as $site_plan ) {
+				switch_to_blog( (int) $site_plan['blog_id'] );
 				self::clear_site_identity_binding( $user->ID, true );
 				restore_current_blog();
-				$completed_blog_ids[] = (int) $site_plan['blog_id'];
 			}
 
 			self::set_network_scim_suspended( $user->ID, true );
@@ -756,7 +710,7 @@ final class ScimController {
 						'mode'               => 'remove_from_network',
 						'global_suspended'   => true,
 						'blog_operations'    => $network_plan['blog_operations'],
-						'completed_blog_ids' => $completed_blog_ids,
+						'completed_blog_ids' => array_values( array_map( static fn( array $operation ): int => (int) $operation['blog_id'], $completed_operations ) ),
 						'remaining_blog_ids' => self::get_user_blog_ids( $user->ID ),
 					)
 				)
@@ -1192,6 +1146,17 @@ final class ScimController {
 	}
 
 	/**
+	 * Return the flattened user-route error for absent, local, or protected accounts.
+	 */
+	private static function scim_route_user_unavailable_error(): \WP_Error {
+		return new \WP_Error(
+			'scim_not_found',
+			'Requested SCIM user is not available.',
+			array( 'status' => 404 )
+		);
+	}
+
+	/**
 	 * Emit an auditable SCIM identity event.
 	 *
 	 * @param array<string, mixed> $context
@@ -1318,6 +1283,45 @@ final class ScimController {
 		}
 
 		return $plan;
+	}
+
+	/**
+	 * Restore previously removed site memberships after a network deprovision failure.
+	 *
+	 * @param array<int, array<string, mixed>> $completed_operations
+	 * @return array<string, mixed>
+	 */
+	private static function rollback_network_deprovision( int $user_id, array $completed_operations ): array {
+		$restored_blog_ids = array();
+		$failed_blog_ids   = array();
+
+		foreach ( array_reverse( $completed_operations ) as $site_plan ) {
+			$blog_id = (int) ( $site_plan['blog_id'] ?? 0 );
+			if ( $blog_id <= 0 ) {
+				continue;
+			}
+
+			switch_to_blog( $blog_id );
+			$restored = self::restore_site_membership( $user_id, $site_plan );
+			restore_current_blog();
+
+			if ( is_wp_error( $restored ) ) {
+				$failed_blog_ids[] = array(
+					'blog_id' => $blog_id,
+					'message' => $restored->get_error_message(),
+				);
+				continue;
+			}
+
+			$restored_blog_ids[] = $blog_id;
+		}
+
+		sort( $restored_blog_ids );
+
+		return array(
+			'restored_blog_ids' => $restored_blog_ids,
+			'failed_blog_ids'   => $failed_blog_ids,
+		);
 	}
 
 	/**
@@ -1494,6 +1498,61 @@ final class ScimController {
 		}
 
 		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ) );
+	}
+
+	/**
+	 * Check whether a numeric SCIM user route may operate on the user.
+	 */
+	private static function is_scim_route_user_available( $user ): bool {
+		return $user instanceof \WP_User
+			&& self::is_on_current_blog( $user->ID )
+			&& self::is_scim_managed( $user )
+			&& ! self::is_protected_account( $user->ID, (array) $user->roles );
+	}
+
+	/**
+	 * Restore a removed user to the current site with the recorded roles.
+	 *
+	 * @param array<string, mixed> $site_plan
+	 * @return true|\WP_Error
+	 */
+	private static function restore_site_membership( int $user_id, array $site_plan ) {
+		$blog_id = get_current_blog_id();
+		$roles   = array_values(
+			array_filter(
+				array_map( 'sanitize_key', (array) ( $site_plan['roles'] ?? array() ) ),
+				static fn( string $role ): bool => '' !== $role
+			)
+		);
+
+		if ( ! is_user_member_of_blog( $user_id, $blog_id ) ) {
+			$added = add_user_to_blog( $blog_id, $user_id, $roles[0] ?? 'subscriber' );
+			if ( is_wp_error( $added ) ) {
+				return new \WP_Error(
+					'scim_rollback_failed',
+					'Failed to restore the user to site ' . $blog_id . ': ' . $added->get_error_message()
+				);
+			}
+		}
+
+		$user = get_user_by( 'id', $user_id );
+		if ( ! ( $user instanceof \WP_User ) ) {
+			return new \WP_Error( 'scim_rollback_failed', 'Failed to reload the restored user for site ' . $blog_id . '.' );
+		}
+
+		if ( empty( $roles ) ) {
+			$user->set_role( '' );
+			return true;
+		}
+
+		$primary_role = array_shift( $roles );
+		$user->set_role( $primary_role );
+
+		foreach ( $roles as $role ) {
+			$user->add_role( $role );
+		}
+
+		return true;
 	}
 
 	// ── SCIM User helpers ───────────────────────────────────────────────

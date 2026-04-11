@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\IdpManager;
 
 /**
@@ -75,21 +76,6 @@ final class OidcLoginController {
 			$code_verifier  = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
 			$code_challenge = rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' );
 
-			// Store state + nonce + verifier in a WP Transient (10-minute TTL).
-			set_transient(
-				self::verification_transient_key( $state ),
-				wp_json_encode(
-					array(
-						'idp_id'        => $idp_id,
-						'blog_id'       => get_current_blog_id(),
-						'state'         => $state,
-						'nonce'         => $nonce,
-						'code_verifier' => $code_verifier,
-					)
-				),
-				600
-			);
-
 			// Use the authorization endpoint from our IdP config directly,
 			// since getProviderConfigValue() is protected in the library.
 			$auth_endpoint = $idp['authorization_endpoint'] ?? '';
@@ -104,6 +90,29 @@ final class OidcLoginController {
 			if ( is_wp_error( $endpoint_validation ) ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 				error_log( 'Enterprise IAM – OIDC login error: ' . $endpoint_validation->get_error_message() );
+
+				return new \WP_REST_Response(
+					array( 'error' => 'Failed to initiate OIDC login. Please contact your administrator.' ),
+					500
+				);
+			}
+
+			$issued = FederationFlowGuard::issue(
+				'oidc',
+				$state,
+				array(
+					'idp_id'        => $idp_id,
+					'blog_id'       => get_current_blog_id(),
+					'state'         => $state,
+					'nonce'         => $nonce,
+					'code_verifier' => $code_verifier,
+				),
+				600
+			);
+
+			if ( is_wp_error( $issued ) ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – OIDC login error: ' . $issued->get_error_message() );
 
 				return new \WP_REST_Response(
 					array( 'error' => 'Failed to initiate OIDC login. Please contact your administrator.' ),
@@ -139,10 +148,4 @@ final class OidcLoginController {
 		}
 	}
 
-	/**
-	 * Blog-scoped transient key for OIDC verification state.
-	 */
-	private static function verification_transient_key( string $state ): string {
-		return 'ea_oidc_v_' . get_current_blog_id() . '_' . sanitize_text_field( $state );
-	}
 }
