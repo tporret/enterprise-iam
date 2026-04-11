@@ -91,7 +91,26 @@ final class IdpController {
 		}
 
 		$sanitized = IdpManager::sanitize( $raw );
-		IdpManager::save( $sanitized );
+		if ( is_wp_error( $sanitized ) ) {
+			$status = $sanitized->get_error_data( 'enterprise_auth_invalid_idp_url' );
+			$status = is_array( $status ) && isset( $status['status'] ) ? (int) $status['status'] : 400;
+
+			return new \WP_REST_Response(
+				array( 'error' => $sanitized->get_error_message() ),
+				$status
+			);
+		}
+
+		$result = IdpManager::save( $sanitized );
+		if ( is_wp_error( $result ) ) {
+			$status = $result->get_error_data( 'enterprise_auth_secret_storage_failed' );
+			$status = is_array( $status ) && isset( $status['status'] ) ? (int) $status['status'] : 500;
+
+			return new \WP_REST_Response(
+				array( 'error' => $result->get_error_message() ),
+				$status
+			);
+		}
 
 		// Never return client_secret in the response.
 		$sanitized['client_secret'] = ! empty( $sanitized['client_secret'] ) ? '••••••••' : '';

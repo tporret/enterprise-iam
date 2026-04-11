@@ -225,8 +225,11 @@ export default function OidcSettings( { showToast } ) {
 			showToast( 'OIDC configuration saved successfully.' );
 			cancelEdit();
 			loadIdps();
-		} catch {
-			showToast( 'Failed to save OIDC configuration.', 'error' );
+		} catch ( error ) {
+			showToast(
+				error?.message || 'Failed to save OIDC configuration.',
+				'error'
+			);
 		} finally {
 			setSaving( false );
 		}

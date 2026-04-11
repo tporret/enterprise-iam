@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use EnterpriseAuth\Plugin\FederationErrorHandler;
 use EnterpriseAuth\Plugin\IdpManager;
 use EnterpriseAuth\Plugin\EnterpriseProvisioning;
 use EnterpriseAuth\Plugin\SamlSettingsFactory;
@@ -23,6 +24,8 @@ use EnterpriseAuth\Plugin\SamlSettingsFactory;
 final class SamlAcsController {
 
 	private const NAMESPACE = 'enterprise-auth/v1';
+	private const PUBLIC_ERROR_CODE = 'federation_failed';
+	private string $last_error_reference = '';
 
 	public function register_routes(): void {
 		register_rest_route(
@@ -42,17 +45,26 @@ final class SamlAcsController {
 	public function consume( \WP_REST_Request $request ): \WP_REST_Response {
 		$saml_response = $request->get_param( 'SAMLResponse' );
 		$relay_state   = $request->get_param( 'RelayState' );
+		$log_context   = array(
+			'phase' => 'acs_entry',
+		);
 
 		if ( empty( $saml_response ) ) {
-			return $this->error_redirect( 'Missing SAMLResponse.' );
+			$this->log_detailed_error( 'Missing SAMLResponse.', array( 'phase' => 'parameter_validation' ) );
+			return $this->error_redirect();
 		}
 
 		// RelayState carries the IdP ID set by SamlLoginController.
 		$idp_id = sanitize_text_field( $relay_state ?? '' );
 		$idp    = IdpManager::find( $idp_id );
+		$log_context['idp_id'] = $idp_id;
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'saml' ) {
-			return $this->error_redirect( 'SAML IdP configuration not found.' );
+			$this->log_detailed_error(
+				'SAML ACS could not resolve a valid IdP configuration.',
+				$log_context + array( 'phase' => 'idp_resolution' )
+			);
+			return $this->error_redirect();
 		}
 
 		try {
@@ -77,14 +89,20 @@ final class SamlAcsController {
 			$errors = $auth->getErrors();
 			if ( ! empty( $errors ) ) {
 				$reason = $auth->getLastErrorReason();
-				return $this->error_redirect(
+				$this->log_detailed_error(
 					'SAML validation failed: ' . implode( ', ', $errors )
-					. ( $reason ? ' — ' . $reason : '' )
+					. ( $reason ? ' — ' . $reason : '' ),
+					$log_context + array( 'phase' => 'assertion_validation' )
 				);
+				return $this->error_redirect();
 			}
 
 			if ( ! $auth->isAuthenticated() ) {
-				return $this->error_redirect( 'SAML authentication was not successful.' );
+				$this->log_detailed_error(
+					'SAML authentication was not successful.',
+					$log_context + array( 'phase' => 'authentication' )
+				);
+				return $this->error_redirect();
 			}
 
 			// Extract user attributes.
@@ -103,16 +121,21 @@ final class SamlAcsController {
 			$result = EnterpriseProvisioning::provision_and_login( $idp, $attributes );
 
 			if ( is_wp_error( $result ) ) {
-				return $this->error_redirect( $result->get_error_message() );
+				$this->log_detailed_error(
+					$result->get_error_message(),
+					$log_context + array( 'phase' => 'provisioning' )
+				);
+				return $this->error_redirect();
 			}
 
 			return $this->success_redirect();
 		} catch ( \Throwable $e ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( 'Enterprise IAM – SAML ACS error: ' . $e->getMessage() );
-			}
-			return $this->error_redirect( 'SAML authentication failed. Please try again or contact your administrator.' );
+			$this->log_detailed_error(
+				'Unhandled exception during SAML ACS processing.',
+				$log_context + array( 'phase' => 'acs_exception' ),
+				$e
+			);
+			return $this->error_redirect();
 		}
 	}
 
@@ -207,17 +230,25 @@ final class SamlAcsController {
 	}
 
 	/**
-	 * Redirect to wp-login.php with an error message.
+	 * Redirect to wp-login.php with a generic SSO error code.
 	 */
-	private function error_redirect( string $message ): \WP_REST_Response {
-		$url = add_query_arg(
-			array(
-				'ea_sso_error' => rawurlencode( $message ),
-			),
-			wp_login_url()
-		);
+	private function error_redirect(): \WP_REST_Response {
+		$url = FederationErrorHandler::login_error_url( self::PUBLIC_ERROR_CODE, $this->last_error_reference );
 
 		return new \WP_REST_Response( null, 302, array( 'Location' => $url ) );
+	}
+
+	/**
+	 * Log the detailed protocol error for administrator troubleshooting.
+	 */
+	private function log_detailed_error( string $detail, array $context = array(), ?\Throwable $exception = null ): void {
+		$this->last_error_reference = FederationErrorHandler::log(
+			'saml',
+			'saml_acs',
+			$detail,
+			$context,
+			$exception
+		);
 	}
 
 	/**

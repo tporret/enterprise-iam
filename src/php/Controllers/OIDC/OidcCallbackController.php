@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\EnterpriseProvisioning;
+use EnterpriseAuth\Plugin\FederationErrorHandler;
 use EnterpriseAuth\Plugin\IdpManager;
 use EnterpriseAuth\Plugin\OidcTransientClient;
 
@@ -24,6 +25,8 @@ use EnterpriseAuth\Plugin\OidcTransientClient;
 final class OidcCallbackController {
 
 	private const NAMESPACE = 'enterprise-auth/v1';
+	private const PUBLIC_ERROR_CODE = 'federation_failed';
+	private string $last_error_reference = '';
 
 	public function register_routes(): void {
 		register_rest_route(
@@ -66,14 +69,23 @@ final class OidcCallbackController {
 		$code  = $this->get_callback_param( $request, 'code' );
 		$state = $this->get_callback_param( $request, 'state' );
 		$error = $this->get_callback_param( $request, 'error' );
+		$log_context = array(
+			'phase' => 'callback_entry',
+		);
 
 		// Handle IdP-side errors (e.g. user cancelled consent).
 		if ( '' !== $error ) {
 			if ( '' !== $state ) {
 				$state_data = $this->consume_state( $state );
 				if ( null === $state_data ) {
-					return $this->error_redirect( 'Invalid or expired OIDC state. Please try again.' );
+					$this->log_detailed_error(
+						'OIDC provider returned an error with an invalid or expired state.',
+						array( 'phase' => 'provider_error_state_validation' )
+					);
+					return $this->error_redirect();
 				}
+
+				$log_context['idp_id'] = (string) ( $state_data['idp_id'] ?? '' );
 			}
 
 			$desc = $this->get_callback_param( $request, 'error_description' );
@@ -83,30 +95,50 @@ final class OidcCallbackController {
 				$message .= ': ' . sanitize_text_field( $desc );
 			}
 
-			return $this->error_redirect( $message );
+			$log_context['phase'] = 'provider_error';
+			$this->log_detailed_error( $message, $log_context );
+			return $this->error_redirect();
 		}
 
 		if ( empty( $code ) || empty( $state ) ) {
-			return $this->error_redirect( 'Missing authorization code or state.' );
+			$this->log_detailed_error( 'Missing authorization code or state.', array( 'phase' => 'parameter_validation' ) );
+			return $this->error_redirect();
 		}
 
 		// ── Validate state (CSRF protection) ────────────────────────────
 		$state_data = $this->consume_state( $state );
 		if ( null === $state_data ) {
-			return $this->error_redirect( 'Invalid or expired OIDC state. Please try again.' );
+			$this->log_detailed_error( 'Invalid or expired OIDC state.', array( 'phase' => 'state_validation' ) );
+			return $this->error_redirect();
 		}
 
 		$idp_id = $state_data['idp_id'] ?? '';
 		$nonce  = $state_data['nonce'] ?? '';
 		$code_verifier = $state_data['code_verifier'] ?? '';
 		$idp    = IdpManager::find( $idp_id );
+		$log_context = array(
+			'idp_id' => (string) $idp_id,
+		);
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'oidc' || '' === $nonce || '' === $code_verifier ) {
-			return $this->error_redirect( 'OIDC Identity Provider not found.' );
+			$this->log_detailed_error(
+				'OIDC callback could not resolve a valid IdP or PKCE state.',
+				$log_context + array( 'phase' => 'idp_resolution' )
+			);
+			return $this->error_redirect();
 		}
 
 		// ── Token exchange via OpenIDConnectClient ──────────────────────
 		try {
+			$runtime_validation = IdpManager::validate_runtime_oidc_configuration( $idp );
+			if ( is_wp_error( $runtime_validation ) ) {
+				$this->log_detailed_error(
+					$runtime_validation->get_error_message(),
+					$log_context + array( 'phase' => 'runtime_validation' )
+				);
+				return $this->error_redirect();
+			}
+
 			$issuer        = $idp['issuer'] ?? ( $idp['authorization_endpoint'] ?? '' );
 			$client_id     = $idp['client_id'] ?? '';
 			$client_secret = $idp['client_secret'] ?? '';
@@ -178,7 +210,11 @@ final class OidcCallbackController {
 			}
 
 			if ( empty( $email ) || ! is_email( $email ) ) {
-				return $this->error_redirect( 'No valid email address in OIDC claims.' );
+				$this->log_detailed_error(
+					'No valid email address was present in OIDC claims.',
+					$log_context + array( 'phase' => 'claim_validation' )
+				);
+				return $this->error_redirect();
 			}
 
 			// Normalize groups to array.
@@ -201,7 +237,11 @@ final class OidcCallbackController {
 			$configured_issuer = rtrim( (string) $issuer, '/' );
 			$token_issuer      = rtrim( (string) $iss, '/' );
 			if ( '' !== $configured_issuer && '' !== $token_issuer && $configured_issuer !== $token_issuer ) {
-				return $this->error_redirect( 'OIDC issuer mismatch: token issuer does not match configured IdP.' );
+				$this->log_detailed_error(
+					'OIDC issuer mismatch: token issuer did not match the configured IdP.',
+					$log_context + array( 'phase' => 'issuer_validation' )
+				);
+				return $this->error_redirect();
 			}
 
 			$attributes = array(
@@ -218,31 +258,44 @@ final class OidcCallbackController {
 			$result = EnterpriseProvisioning::provision_and_login( $idp, $attributes );
 
 			if ( is_wp_error( $result ) ) {
-				return $this->error_redirect( $result->get_error_message() );
+				$this->log_detailed_error(
+					$result->get_error_message(),
+					$log_context + array( 'phase' => 'provisioning' )
+				);
+				return $this->error_redirect();
 			}
 
 			return $this->success_redirect();
 		} catch ( \Throwable $e ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( 'Enterprise IAM – OIDC callback error: ' . $e->getMessage() );
-			}
-			return $this->error_redirect( 'OIDC authentication failed. Please try again or contact your administrator.' );
+			$this->log_detailed_error(
+				'Unhandled exception during OIDC callback processing.',
+				$log_context + array( 'phase' => 'callback_exception' ),
+				$e
+			);
+			return $this->error_redirect();
 		}
 	}
 
 	/**
-	 * Redirect to wp-login.php with an error message.
+	 * Redirect to wp-login.php with a generic SSO error code.
 	 */
-	private function error_redirect( string $message ): \WP_REST_Response {
-		$url = add_query_arg(
-			array(
-				'ea_sso_error' => rawurlencode( $message ),
-			),
-			wp_login_url()
-		);
+	private function error_redirect(): \WP_REST_Response {
+		$url = FederationErrorHandler::login_error_url( self::PUBLIC_ERROR_CODE, $this->last_error_reference );
 
 		return new \WP_REST_Response( null, 302, array( 'Location' => $url ) );
+	}
+
+	/**
+	 * Log the detailed protocol error for administrator troubleshooting.
+	 */
+	private function log_detailed_error( string $detail, array $context = array(), ?\Throwable $exception = null ): void {
+		$this->last_error_reference = FederationErrorHandler::log(
+			'oidc',
+			'oidc_callback',
+			$detail,
+			$context,
+			$exception
+		);
 	}
 
 	/**

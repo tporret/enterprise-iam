@@ -26,8 +26,10 @@ final class Encryption {
 	/**
 	 * Encrypt a plaintext string.
 	 *
-	 * Returns the original string unchanged if OpenSSL is unavailable
-	 * (graceful degradation — logged as a warning).
+	 * Throws when OpenSSL is unavailable or encryption fails so callers can
+	 * abort persistence rather than silently storing secrets in plaintext.
+	 *
+	 * @throws \RuntimeException When encryption support is unavailable or fails.
 	 */
 	public static function encrypt( string $plaintext ): string {
 		if ( '' === $plaintext ) {
@@ -35,9 +37,7 @@ final class Encryption {
 		}
 
 		if ( ! function_exists( 'openssl_encrypt' ) ) {
-			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			error_log( 'Enterprise IAM: openssl extension not available — client_secret stored unencrypted.' );
-			return $plaintext;
+			throw new \RuntimeException( 'OpenSSL encryption support is not available.' );
 		}
 
 		$key = self::derive_key();
@@ -56,7 +56,7 @@ final class Encryption {
 		);
 
 		if ( false === $ciphertext ) {
-			return $plaintext; // Fallback — don't lose the secret.
+			throw new \RuntimeException( 'OpenSSL failed to encrypt the client secret.' );
 		}
 
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode

@@ -318,8 +318,11 @@ export default function SamlSettings( { showToast } ) {
 			showToast( 'SAML configuration saved successfully.' );
 			cancelEdit();
 			loadIdps();
-		} catch {
-			showToast( 'Failed to save SAML configuration.', 'error' );
+		} catch ( error ) {
+			showToast(
+				error?.message || 'Failed to save SAML configuration.',
+				'error'
+			);
 		} finally {
 			setSaving( false );
 		}

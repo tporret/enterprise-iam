@@ -17,6 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class LoginFlow {
 
+	private const SSO_ERROR_MESSAGES = array(
+		'federation_failed' => 'An error occurred during authentication. Please contact your IT helpdesk.',
+	);
+
 	public function init(): void {
 		add_action( 'login_enqueue_scripts', array( $this, 'enqueue_login_assets' ) );
 		add_action( 'login_form', array( $this, 'render_step_ui' ) );
@@ -125,6 +129,29 @@ final class LoginFlow {
 	 * Display SSO error messages returned via query string.
 	 */
 	public function render_sso_error( string $message ): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! empty( $_GET['sso_error'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$error_code = sanitize_key( wp_unslash( $_GET['sso_error'] ) );
+			$reference  = '';
+
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( ! empty( $_GET[ FederationErrorHandler::REFERENCE_QUERY_ARG ] ) ) {
+				// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$reference = sanitize_text_field( wp_unslash( $_GET[ FederationErrorHandler::REFERENCE_QUERY_ARG ] ) );
+			}
+
+			$error_text = self::SSO_ERROR_MESSAGES[ $error_code ] ?? self::SSO_ERROR_MESSAGES['federation_failed'];
+			$message   .= '<div id="login_error"><strong>SSO Error:</strong> ' . esc_html( $error_text );
+
+			if ( '' !== $reference ) {
+				$message .= '<br /><span class="ea-sso-error-reference">' . esc_html( sprintf( __( 'Reference ID: %s', 'enterprise-auth' ), $reference ) ) . '</span>';
+			}
+
+			$message .= '</div>';
+			return $message;
+		}
+
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! empty( $_GET['ea_sso_error'] ) ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended

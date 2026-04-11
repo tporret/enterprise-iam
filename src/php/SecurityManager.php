@@ -239,6 +239,93 @@ final class SecurityManager {
 			10,
 			2
 		);
+
+		add_action(
+			'lostpassword_post',
+			static function ( \WP_Error $errors, $user_data ): void {
+				if ( $errors->has_errors() || ! ( $user_data instanceof \WP_User ) ) {
+					return;
+				}
+
+				if ( ! self::is_sso_bound( $user_data->ID ) ) {
+					return;
+				}
+
+				$errors->add( 'invalidcombo', self::get_masked_password_reset_message() );
+			},
+			10,
+			2
+		);
+
+		add_action(
+			'validate_password_reset',
+			static function ( \WP_Error $errors, $user ): void {
+				if ( ! ( $user instanceof \WP_User ) ) {
+					return;
+				}
+
+				if ( ! self::is_sso_bound( $user->ID ) ) {
+					return;
+				}
+
+				self::clear_password_reset_key( $user->ID );
+				self::clear_password_reset_cookie();
+
+				if ( ! headers_sent() ) {
+					wp_safe_redirect( site_url( 'wp-login.php?action=lostpassword&error=invalidkey' ) );
+					exit;
+				}
+
+				$errors->add( 'invalid_key', __( 'Invalid key.' ) );
+			},
+			10,
+			2
+		);
+	}
+
+	/**
+	 * Return the generic lost-password response used for SSO-managed accounts.
+	 */
+	private static function get_masked_password_reset_message(): string {
+		return __( '<strong>Error:</strong> There is no account with that username or email address.' );
+	}
+
+	/**
+	 * Clear the core password-reset cookie so reset links cannot be replayed.
+	 */
+	private static function clear_password_reset_cookie(): void {
+		$cookie_path = wp_parse_url( network_site_url( 'wp-login.php', 'login' ), PHP_URL_PATH );
+
+		if ( ! is_string( $cookie_path ) || '' === $cookie_path ) {
+			$cookie_path = '/';
+		}
+
+		setcookie(
+			'wp-resetpass-' . COOKIEHASH,
+			' ',
+			time() - YEAR_IN_SECONDS,
+			$cookie_path,
+			COOKIE_DOMAIN,
+			is_ssl(),
+			true
+		);
+	}
+
+	/**
+	 * Invalidate any stored password-reset token for an SSO-managed user.
+	 */
+	private static function clear_password_reset_key( int $user_id ): void {
+		global $wpdb;
+
+		$wpdb->update(
+			$wpdb->users,
+			array( 'user_activation_key' => '' ),
+			array( 'ID' => $user_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		clean_user_cache( $user_id );
 	}
 
 	// ── Email Change Protection ────────────────────────────────────────────

@@ -27,7 +27,35 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class IdpManager {
 
-	private const OPTION_KEY = 'enterprise_auth_idps';
+	private const OPTION_KEY              = 'enterprise_auth_idps';
+	private const URL_FIELDS              = array(
+		'issuer',
+		'authorization_endpoint',
+		'token_endpoint',
+		'userinfo_endpoint',
+		'jwks_uri',
+		'sso_url',
+		'end_session_endpoint',
+		'slo_url',
+	);
+	private const OIDC_RUNTIME_URL_FIELDS = array(
+		'issuer',
+		'authorization_endpoint',
+		'token_endpoint',
+		'userinfo_endpoint',
+		'jwks_uri',
+	);
+	private const URL_LABELS              = array(
+		'issuer'                 => 'Issuer URL',
+		'authorization_endpoint' => 'Authorization Endpoint',
+		'token_endpoint'         => 'Token Endpoint',
+		'userinfo_endpoint'      => 'UserInfo Endpoint',
+		'jwks_uri'               => 'JWKS URI',
+		'sso_url'                => 'SSO URL',
+		'end_session_endpoint'   => 'End Session Endpoint',
+		'slo_url'                => 'Single Logout URL',
+		'runtime_endpoint'       => 'Runtime endpoint',
+	);
 
 	// ── Read ────────────────────────────────────────────────────────────────
 
@@ -103,11 +131,30 @@ final class IdpManager {
 	 * Save/update an IdP configuration. Inserts if new id, updates if existing.
 	 *
 	 * @param array<string, mixed> $idp
+	 * @return true|\WP_Error
 	 */
-	public static function save( array $idp ): void {
-		// Encrypt client_secret before persisting to the database.
-		if ( isset( $idp['client_secret'] ) && '' !== $idp['client_secret'] ) {
-			$idp['client_secret'] = Encryption::encrypt( $idp['client_secret'] );
+	public static function save( array $idp ) {
+		try {
+			// Encrypt client_secret before persisting to the database.
+			if ( isset( $idp['client_secret'] ) && '' !== $idp['client_secret'] ) {
+				$idp['client_secret'] = Encryption::encrypt( $idp['client_secret'] );
+			}
+		} catch ( \RuntimeException $e ) {
+			$idp_id = sanitize_text_field( (string) ( $idp['id'] ?? '' ) );
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log(
+				sprintf(
+					'CRITICAL: Enterprise IAM failed to encrypt client_secret for IdP "%s": %s',
+					$idp_id,
+					$e->getMessage()
+				)
+			);
+
+			return new \WP_Error(
+				'enterprise_auth_secret_storage_failed',
+				'Failed to save IdP configuration securely. Please contact your administrator.',
+				array( 'status' => 500 )
+			);
 		}
 
 		$all   = self::all_raw();
@@ -126,6 +173,8 @@ final class IdpManager {
 		}
 
 		update_option( self::OPTION_KEY, array_values( $all ) );
+
+		return true;
 	}
 
 	/**
@@ -149,9 +198,9 @@ final class IdpManager {
 	 * Sanitize a raw IdP configuration array from the REST API.
 	 *
 	 * @param array<string, mixed> $raw
-	 * @return array<string, mixed>
+	 * @return array<string, mixed>|\WP_Error
 	 */
-	public static function sanitize( array $raw ): array {
+	public static function sanitize( array $raw ): array|\WP_Error {
 		$protocol = in_array( $raw['protocol'] ?? '', array( 'oidc', 'saml' ), true )
 			? $raw['protocol']
 			: 'oidc';
@@ -177,7 +226,7 @@ final class IdpManager {
 			}
 		}
 
-		return array(
+		$sanitized = array(
 			'id'                         => ! empty( $raw['id'] ) ? sanitize_text_field( $raw['id'] ) : wp_generate_uuid4(),
 			'provider_name'              => sanitize_text_field( $raw['provider_name'] ?? '' ),
 			'protocol'                   => $protocol,
@@ -202,6 +251,233 @@ final class IdpManager {
 			'force_reauth'               => ! empty( $raw['force_reauth'] ),
 			'end_session_endpoint'       => esc_url_raw( $raw['end_session_endpoint'] ?? '' ),
 			'slo_url'                    => esc_url_raw( $raw['slo_url'] ?? '' ),
+		);
+
+		$url_validation = self::validate_configured_urls( $sanitized );
+		if ( is_wp_error( $url_validation ) ) {
+			return $url_validation;
+		}
+
+		return $sanitized;
+	}
+
+	/**
+	 * Validate OIDC runtime endpoints before any server-side outbound requests.
+	 *
+	 * @param array<string, mixed> $idp
+	 * @return true|\WP_Error
+	 */
+	public static function validate_runtime_oidc_configuration( array $idp ) {
+		return self::validate_configured_urls( $idp, self::OIDC_RUNTIME_URL_FIELDS );
+	}
+
+	/**
+	 * Validate a single runtime endpoint URL.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public static function validate_runtime_endpoint_url( string $url, string $field ) {
+		return self::validate_endpoint_url( $url, $field );
+	}
+
+	/**
+	 * Build a pinned cURL resolution target for a validated runtime endpoint.
+	 *
+	 * @return array{host: string, port: int, resolve: ?string}|\WP_Error
+	 */
+	public static function build_runtime_curl_resolve_target( string $url, string $field = 'runtime_endpoint' ) {
+		$validation = self::validate_endpoint_url( $url, $field );
+		if ( is_wp_error( $validation ) ) {
+			return $validation;
+		}
+
+		$validated = wp_http_validate_url( $url );
+		if ( false === $validated ) {
+			return new \WP_Error(
+				'enterprise_auth_invalid_idp_url',
+				'Runtime endpoint must be a valid HTTPS URL.',
+				array( 'status' => 400 )
+			);
+		}
+
+		$host = strtolower( (string) wp_parse_url( $validated, PHP_URL_HOST ) );
+		$port = (int) wp_parse_url( $validated, PHP_URL_PORT );
+		if ( $port <= 0 ) {
+			$port = 443;
+		}
+
+		if ( false !== filter_var( $host, FILTER_VALIDATE_IP ) ) {
+			return array(
+				'host'    => $host,
+				'port'    => $port,
+				'resolve' => null,
+			);
+		}
+
+		$resolved_ips = self::resolve_host_ips( $host );
+		if ( empty( $resolved_ips ) ) {
+			return new \WP_Error(
+				'enterprise_auth_invalid_idp_url',
+				'Runtime endpoint must resolve to a public IP address.',
+				array( 'status' => 400 )
+			);
+		}
+
+		$resolve_ips = array_map(
+			static function ( string $ip ): string {
+				return str_contains( $ip, ':' ) ? '[' . $ip . ']' : $ip;
+			},
+			$resolved_ips
+		);
+
+		return array(
+			'host'    => $host,
+			'port'    => $port,
+			'resolve' => sprintf( '%s:%d:%s', $host, $port, implode( ',', $resolve_ips ) ),
+		);
+	}
+
+	/**
+	 * Validate configured public HTTPS URLs and reject internal targets.
+	 *
+	 * @param array<string, mixed> $idp
+	 * @param string[]|null        $fields
+	 * @return true|\WP_Error
+	 */
+	private static function validate_configured_urls( array $idp, ?array $fields = null ) {
+		$fields = is_array( $fields ) ? $fields : self::URL_FIELDS;
+
+		foreach ( $fields as $field ) {
+			$validation = self::validate_endpoint_url( (string) ( $idp[ $field ] ?? '' ), $field );
+			if ( is_wp_error( $validation ) ) {
+				return $validation;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Validate a configured IdP URL.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private static function validate_endpoint_url( string $url, string $field ) {
+		if ( '' === $url ) {
+			return true;
+		}
+
+		$label  = self::URL_LABELS[ $field ] ?? 'Configured URL';
+		$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
+
+		if ( 'https' !== $scheme ) {
+			return new \WP_Error(
+				'enterprise_auth_invalid_idp_url',
+				sprintf( '%s must use https://.', $label ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$validated = wp_http_validate_url( $url );
+		if ( false === $validated ) {
+			return new \WP_Error(
+				'enterprise_auth_invalid_idp_url',
+				sprintf( '%s must be a valid HTTPS URL.', $label ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$host = strtolower( (string) wp_parse_url( $validated, PHP_URL_HOST ) );
+		if ( '' === $host ) {
+			return new \WP_Error(
+				'enterprise_auth_invalid_idp_url',
+				sprintf( '%s must include a hostname.', $label ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( 'localhost' === $host ) {
+			return new \WP_Error(
+				'enterprise_auth_invalid_idp_url',
+				sprintf( '%s cannot target localhost or internal network addresses.', $label ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$resolved_ips = self::resolve_host_ips( $host );
+		if ( empty( $resolved_ips ) ) {
+			return new \WP_Error(
+				'enterprise_auth_invalid_idp_url',
+				sprintf( '%s must resolve to a public IP address.', $label ),
+				array( 'status' => 400 )
+			);
+		}
+
+		foreach ( $resolved_ips as $ip ) {
+			if ( self::is_blocked_ip( $ip ) ) {
+				return new \WP_Error(
+					'enterprise_auth_invalid_idp_url',
+					sprintf( '%s cannot target private, loopback, link-local, or metadata addresses.', $label ),
+					array( 'status' => 400 )
+				);
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Resolve a hostname into IPv4/IPv6 addresses.
+	 *
+	 * @return string[]
+	 */
+	private static function resolve_host_ips( string $host ): array {
+		if ( false !== filter_var( $host, FILTER_VALIDATE_IP ) ) {
+			return array( $host );
+		}
+
+		$ips = array();
+
+		$ipv4 = gethostbynamel( $host );
+		if ( false !== $ipv4 && is_array( $ipv4 ) ) {
+			$ips = array_merge( $ips, $ipv4 );
+		}
+
+		if ( function_exists( 'dns_get_record' ) && defined( 'DNS_AAAA' ) ) {
+			$records = dns_get_record( $host, DNS_AAAA );
+			if ( is_array( $records ) ) {
+				foreach ( $records as $record ) {
+					if ( ! empty( $record['ipv6'] ) ) {
+						$ips[] = $record['ipv6'];
+					}
+				}
+			}
+		}
+
+		$ips = array_filter(
+			array_unique( $ips ),
+			static fn( string $ip ): bool => false !== filter_var( $ip, FILTER_VALIDATE_IP )
+		);
+
+		return array_values( $ips );
+	}
+
+	/**
+	 * Reject loopback, private, link-local, and metadata targets.
+	 */
+	private static function is_blocked_ip( string $ip ): bool {
+		if ( '169.254.169.254' === $ip ) {
+			return true;
+		}
+
+		if ( '::1' === $ip || str_starts_with( $ip, '127.' ) ) {
+			return true;
+		}
+
+		return false === filter_var(
+			$ip,
+			FILTER_VALIDATE_IP,
+			FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
 		);
 	}
 }

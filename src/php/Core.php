@@ -330,9 +330,9 @@ final class Core {
 			return;
 		}
 
-		// Don't intercept explicit ea_sso_error displays or logout actions.
+		// Don't intercept explicit SSO error displays or logout actions.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( ! empty( $_GET['ea_sso_error'] ) || ! empty( $_GET['loggedout'] ) ) {
+		if ( ! empty( $_GET['ea_sso_error'] ) || ! empty( $_GET['sso_error'] ) || ! empty( $_GET['loggedout'] ) ) {
 			return;
 		}
 

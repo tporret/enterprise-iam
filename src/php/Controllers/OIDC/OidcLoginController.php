@@ -100,6 +100,17 @@ final class OidcLoginController {
 				);
 			}
 
+			$endpoint_validation = IdpManager::validate_runtime_endpoint_url( $auth_endpoint, 'authorization_endpoint' );
+			if ( is_wp_error( $endpoint_validation ) ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – OIDC login error: ' . $endpoint_validation->get_error_message() );
+
+				return new \WP_REST_Response(
+					array( 'error' => 'Failed to initiate OIDC login. Please contact your administrator.' ),
+					500
+				);
+			}
+
 			$auth_params = array(
 				'response_type'         => 'code',
 				'client_id'             => $client_id,
@@ -119,10 +130,8 @@ final class OidcLoginController {
 
 			return new \WP_REST_Response( null, 302, array( 'Location' => $auth_url ) );
 		} catch ( \Throwable $e ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( 'Enterprise IAM – OIDC login error: ' . $e->getMessage() );
-			}
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( 'Enterprise IAM – OIDC login error: ' . $e->getMessage() );
 			return new \WP_REST_Response(
 				array( 'error' => 'Failed to initiate OIDC login. Please contact your administrator.' ),
 				500
