@@ -191,6 +191,8 @@ In the SAML or OIDC editing form, toggle **Override Default Attribute Mapping**.
 | First Name Attribute Key | The claim name for the user's given name |
 | Last Name Attribute Key | The claim name for the user's family name |
 
+The form also includes a **Provider Type** selector. When a known provider family is selected, the override UI recommends the matching preset and auto-fills it the first time override mode is enabled with empty custom fields.
+
 ### IdP Presets
 
 A **Load Preset** dropdown auto-fills all three keys for common enterprise IdPs. Selecting a preset fills the inputs; you can then adjust any individual field before saving.

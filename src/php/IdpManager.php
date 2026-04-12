@@ -229,6 +229,7 @@ final class IdpManager {
 		$sanitized = array(
 			'id'                         => ! empty( $raw['id'] ) ? sanitize_text_field( $raw['id'] ) : wp_generate_uuid4(),
 			'provider_name'              => sanitize_text_field( $raw['provider_name'] ?? '' ),
+			'provider_family'            => sanitize_key( (string) ( $raw['provider_family'] ?? '' ) ),
 			'protocol'                   => $protocol,
 			'client_id'                  => sanitize_text_field( $raw['client_id'] ?? '' ),
 			'client_secret'              => sanitize_text_field( $raw['client_secret'] ?? '' ),

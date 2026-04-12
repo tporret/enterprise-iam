@@ -9,9 +9,19 @@ const WP_ROLES = [
 	{ value: 'subscriber', label: 'Subscriber' },
 ];
 
+const OIDC_PROVIDER_OPTIONS = [
+	{ value: 'generic', label: 'Generic OIDC' },
+	{ value: 'google', label: 'Google' },
+	{ value: 'microsoft-entra', label: 'Microsoft Entra ID' },
+	{ value: 'okta', label: 'Okta' },
+	{ value: 'auth0', label: 'Auth0' },
+	{ value: 'ping', label: 'Ping Identity' },
+];
+
 const EMPTY_IDP = {
 	id: '',
 	provider_name: '',
+	provider_family: 'generic',
 	protocol: 'oidc',
 	issuer: '',
 	client_id: '',
@@ -316,6 +326,26 @@ export default function OidcSettings( { showToast } ) {
 				</div>
 
 				<div className="ea-form-group">
+					<label className="ea-label">Provider Type</label>
+					<select
+						className="ea-input"
+						value={ editing.provider_family || 'generic' }
+						onChange={ ( e ) =>
+							updateField( 'provider_family', e.target.value )
+						}
+					>
+						{ OIDC_PROVIDER_OPTIONS.map( ( option ) => (
+							<option key={ option.value } value={ option.value }>
+								{ option.label }
+							</option>
+						) ) }
+					</select>
+					<p className="ea-label__hint" style={ { margin: '4px 0 0' } }>
+						Used for provider-aware setup guidance and attribute mapping presets.
+					</p>
+				</div>
+
+				<div className="ea-form-group">
 					<label className="ea-label">Issuer URL</label>
 					<input
 						type="text"
@@ -356,6 +386,7 @@ export default function OidcSettings( { showToast } ) {
 
 				<AttributeMappingSection
 					protocol="oidc"
+					providerFamily={ editing.provider_family || 'generic' }
 					overrideMapping={ editing.override_attribute_mapping || false }
 					customEmailAttr={ editing.custom_email_attr || '' }
 					customFirstNameAttr={ editing.custom_first_name_attr || '' }

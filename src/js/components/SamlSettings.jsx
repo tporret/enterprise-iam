@@ -9,9 +9,18 @@ const WP_ROLES = [
 	{ value: 'subscriber', label: 'Subscriber' },
 ];
 
+const SAML_PROVIDER_OPTIONS = [
+	{ value: 'generic', label: 'Generic SAML' },
+	{ value: 'microsoft-entra', label: 'Microsoft Entra ID' },
+	{ value: 'okta', label: 'Okta' },
+	{ value: 'ping', label: 'Ping Identity' },
+	{ value: 'shibboleth', label: 'Shibboleth / InCommon' },
+];
+
 const EMPTY_IDP = {
 	id: '',
 	provider_name: '',
+	provider_family: 'generic',
 	protocol: 'saml',
 	entity_id: '',
 	sso_url: '',
@@ -386,6 +395,26 @@ export default function SamlSettings( { showToast } ) {
 				</div>
 
 				<div className="ea-form-group">
+					<label className="ea-label">Provider Type</label>
+					<select
+						className="ea-input"
+						value={ editing.provider_family || 'generic' }
+						onChange={ ( e ) =>
+							updateField( 'provider_family', e.target.value )
+						}
+					>
+						{ SAML_PROVIDER_OPTIONS.map( ( option ) => (
+							<option key={ option.value } value={ option.value }>
+								{ option.label }
+							</option>
+						) ) }
+					</select>
+					<p className="ea-label__hint" style={ { margin: '4px 0 0' } }>
+						Used for provider-aware setup guidance and attribute mapping presets.
+					</p>
+				</div>
+
+				<div className="ea-form-group">
 					<label className="ea-label">IdP Entity ID</label>
 					<input
 						type="text"
@@ -428,6 +457,7 @@ export default function SamlSettings( { showToast } ) {
 
 				<AttributeMappingSection
 					protocol="saml"
+					providerFamily={ editing.provider_family || 'generic' }
 					overrideMapping={ editing.override_attribute_mapping || false }
 					customEmailAttr={ editing.custom_email_attr || '' }
 					customFirstNameAttr={ editing.custom_first_name_attr || '' }

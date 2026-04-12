@@ -1,14 +1,18 @@
-import { useCallback } from '@wordpress/element';
+import { useCallback, useEffect } from '@wordpress/element';
 
 const SAML_PRESETS = [
 	{
+		id: 'standard-okta-saml',
 		label: 'Standard / Okta',
+		families: [ 'okta' ],
 		email: 'email',
 		first_name: 'firstName',
 		last_name: 'lastName',
 	},
 	{
+		id: 'azure-ad-saml',
 		label: 'Azure AD (Microsoft Entra)',
+		families: [ 'microsoft-entra' ],
 		email: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
 		first_name:
 			'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
@@ -16,7 +20,9 @@ const SAML_PRESETS = [
 			'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
 	},
 	{
+		id: 'shibboleth-saml',
 		label: 'Shibboleth / InCommon (OIDs)',
+		families: [ 'shibboleth' ],
 		email: 'urn:oid:0.9.2342.19200300.100.1.3',
 		first_name: 'urn:oid:2.5.4.42',
 		last_name: 'urn:oid:2.5.4.4',
@@ -25,13 +31,17 @@ const SAML_PRESETS = [
 
 const OIDC_PRESETS = [
 	{
+		id: 'standard-oidc',
 		label: 'Standard OIDC (Okta / Google / Auth0)',
+		families: [ 'google', 'okta', 'auth0' ],
 		email: 'email',
 		first_name: 'given_name',
 		last_name: 'family_name',
 	},
 	{
+		id: 'azure-ad-oidc',
 		label: 'Azure AD OIDC',
+		families: [ 'microsoft-entra' ],
 		email: 'preferred_username',
 		first_name: 'given_name',
 		last_name: 'family_name',
@@ -43,6 +53,7 @@ const OIDC_PRESETS = [
  *
  * @param {Object}   props
  * @param {'saml'|'oidc'} props.protocol
+ * @param {string}   props.providerFamily        Normalized provider family.
  * @param {boolean}  props.overrideMapping      Toggle state.
  * @param {string}   props.customEmailAttr      Custom email attribute key.
  * @param {string}   props.customFirstNameAttr  Custom first-name attribute key.
@@ -51,6 +62,7 @@ const OIDC_PRESETS = [
  */
 export default function AttributeMappingSection( {
 	protocol,
+	providerFamily,
 	overrideMapping,
 	customEmailAttr,
 	customFirstNameAttr,
@@ -58,23 +70,57 @@ export default function AttributeMappingSection( {
 	onUpdateField,
 } ) {
 	const presets = protocol === 'saml' ? SAML_PRESETS : OIDC_PRESETS;
+	const normalizedProviderFamily = providerFamily || 'generic';
+	const recommendedPreset = presets.find( ( preset ) =>
+		Array.isArray( preset.families ) && preset.families.includes( normalizedProviderFamily )
+	);
+
+	const applyPreset = useCallback(
+		( preset ) => {
+			if ( ! preset ) {
+				return;
+			}
+
+			onUpdateField( 'custom_email_attr', preset.email );
+			onUpdateField( 'custom_first_name_attr', preset.first_name );
+			onUpdateField( 'custom_last_name_attr', preset.last_name );
+		},
+		[ onUpdateField ]
+	);
 
 	const handlePreset = useCallback(
 		( e ) => {
-			const idx = parseInt( e.target.value, 10 );
-			if ( isNaN( idx ) || idx < 0 ) {
+			const presetId = e.target.value;
+			if ( ! presetId ) {
 				return;
 			}
-			const p = presets[ idx ];
-			if ( ! p ) {
+			const preset = presets.find( ( item ) => item.id === presetId );
+			if ( ! preset ) {
 				return;
 			}
-			onUpdateField( 'custom_email_attr', p.email );
-			onUpdateField( 'custom_first_name_attr', p.first_name );
-			onUpdateField( 'custom_last_name_attr', p.last_name );
+			applyPreset( preset );
 		},
-		[ presets, onUpdateField ]
+		[ presets, applyPreset ]
 	);
+
+	useEffect( () => {
+		if ( ! overrideMapping || ! recommendedPreset ) {
+			return;
+		}
+
+		if ( customEmailAttr || customFirstNameAttr || customLastNameAttr ) {
+			return;
+		}
+
+		applyPreset( recommendedPreset );
+	}, [
+		overrideMapping,
+		recommendedPreset,
+		customEmailAttr,
+		customFirstNameAttr,
+		customLastNameAttr,
+		applyPreset,
+	] );
 
 	return (
 		<div className="ea-form-group">
@@ -94,6 +140,27 @@ export default function AttributeMappingSection( {
 
 			{ overrideMapping && (
 				<div className="ea-attr-mapping">
+					{ recommendedPreset && (
+						<div className="ea-form-group">
+							<label className="ea-label">Recommended Preset</label>
+							<div className="ea-discovery__row">
+								<input
+									type="text"
+									className="ea-input"
+									value={ recommendedPreset.label }
+									readOnly
+								/>
+								<button
+									type="button"
+									className="ea-btn ea-btn--secondary ea-btn--small"
+									onClick={ () => applyPreset( recommendedPreset ) }
+								>
+									Use Recommended Preset
+								</button>
+							</div>
+						</div>
+					)}
+
 					<div className="ea-attr-mapping__preset">
 						<label className="ea-label">Load Preset</label>
 						<select
@@ -104,8 +171,8 @@ export default function AttributeMappingSection( {
 							<option value="" disabled>
 								— Select IdP Preset —
 							</option>
-							{ presets.map( ( p, i ) => (
-								<option key={ p.label } value={ i }>
+							{ presets.map( ( p ) => (
+								<option key={ p.id } value={ p.id }>
 									{ p.label }
 								</option>
 							) ) }
