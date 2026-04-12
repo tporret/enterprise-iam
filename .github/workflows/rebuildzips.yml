@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event.inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -369,6 +369,20 @@ jobs:
 
           cd dist
           zip -r "${ASSET_NAME}" "${PLUGIN_SLUG}"
+
+      - name: Verify packaged runtime files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf verify-dist
+          unzip -q "dist/${ASSET_NAME}" -d verify-dist
+
+          test -f "verify-dist/${PLUGIN_SLUG}/${MAIN_PLUGIN_FILE#./}"
+          test -f "verify-dist/${PLUGIN_SLUG}/build/index.js"
+          test -f "verify-dist/${PLUGIN_SLUG}/build/passkey-login.js"
+          test -f "verify-dist/${PLUGIN_SLUG}/vendor/phpdocumentor/reflection-docblock/src/DocBlockFactory.php"
+          test -f "verify-dist/${PLUGIN_SLUG}/vendor/phpstan/phpdoc-parser/src/ParserConfig.php"
 
       - name: Generate checksum
         shell: bash
