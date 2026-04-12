@@ -26,6 +26,12 @@ vendor/
 
 # ── Build artifacts that shouldn't leak ───────────────────────────────────────
 *.map
+playwright-report/
+test-results/
+tests/
+testsite.md
+playwright.config.ts
+playwright.config.js
 
 # ── PHP / Composer temp files ─────────────────────────────────────────────────
 auth.json
@@ -34,3 +40,4 @@ auth.json
 
 # ── Internal project docs (private) ──────────────────────────────────────────
 .docs/
+*.zip

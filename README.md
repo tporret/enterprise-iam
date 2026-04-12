@@ -80,6 +80,42 @@ For watch mode during UI development:
 npm run start
 ```
 
+## End-to-End Testing
+
+The repository includes a Playwright harness for the SEC audit lab described in `testsite.md`.
+
+### Setup
+
+```bash
+cp .env.e2e.example .env.e2e
+npm run e2e:install
+```
+
+On Linux hosts, install the Playwright system packages once before running the browser-based specs:
+
+```bash
+npm run e2e:install-deps
+```
+
+Defaults in the harness target the local multisite lab at `https://secaudit.localhost` with the documented local test accounts. Override them in `.env.e2e` if your lab differs.
+
+### Run
+
+```bash
+npm run e2e:list
+npm run e2e
+```
+
+The starter specs cover:
+
+- admin smoke coverage for the Enterprise Auth screen
+- passkey registration and passkey login using a Chromium virtual authenticator
+- fixture-driven OIDC and SAML provider seeding
+- mocked OIDC and SAML browser flows covering redirect construction, metadata, and masked callback / ACS failures
+- SCIM token generation plus create, suspend, and delete smoke coverage
+
+Fixture payloads live under `tests/e2e/fixtures/` so you can extend them for your own IdP and provisioning scenarios.
+
 ## Static Analysis
 
 PHPCS with WordPress Coding Standards (WPCS) is configured via `phpcs.xml.dist`.

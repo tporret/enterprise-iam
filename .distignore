@@ -11,6 +11,9 @@
 .wordpress-org/
 node_modules/
 src/js/
+tests/
+playwright-report/
+test-results/
 
 # ── Dev-only vendor packages (require-dev) ───────────────────────────────────
 vendor/bin/
@@ -18,8 +21,6 @@ vendor/squizlabs/
 vendor/wp-coding-standards/
 vendor/dealerdirect/
 vendor/phpcsstandards/
-vendor/phpstan/
-vendor/phpdocumentor/
 
 # ── Vendor test / doc / CI bloat ─────────────────────────────────────────────
 vendor/*/tests/
@@ -73,8 +74,12 @@ composer.lock
 package.json
 package-lock.json
 phpcs.xml.dist
+playwright.config.js
+.env.e2e.example
 phpunit.xml*
 webpack.config.js
 Gruntfile.*
 Makefile
 README.md
+testsite.md
+*.zip

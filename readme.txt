@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.3
-Stable tag: 1.5.2
+Stable tag: 1.5.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -129,6 +129,11 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 
 == Changelog ==
 
+= 1.5.3 =
+* Fix: release packaging now preserves runtime vendor dependencies required by passkey and federation flows
+* Build: release workflow now verifies the packaged zip before upload and avoids duplicate tag-push builds
+* Test: added Playwright end-to-end coverage for passkeys, mocked OIDC and SAML federation flows, provider fixtures, and SCIM smoke scenarios
+
 = 1.5.2 =
 * Build: release and rebuild workflows now pin the packaging runtime to PHP 8.3 via explicit plugin release configuration
 * Compatibility: Composer metadata now pins dependency resolution to PHP 8.3 so release builds avoid accidental PHP 8.4-only lockfile drift
@@ -201,6 +206,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Group and wildcard role mapping
 
 == Upgrade Notice ==
+
+= 1.5.3 =
+Packaging and release hardening update. Runtime vendor dependencies needed by passkeys are preserved in release zips, and the release workflow now verifies packaged artifacts before upload.
 
 = 1.5.2 =
 Release packaging and metadata alignment update. PHP 8.3+ is now the declared minimum, and Composer resolution is pinned to PHP 8.3 to keep release builds compatible.

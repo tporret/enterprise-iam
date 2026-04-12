@@ -68,7 +68,7 @@ export default function App() {
 			<header className="ea-header">
 				<div className="ea-header__inner">
 					<h1 className="ea-header__title">Enterprise Auth</h1>
-					<span className="ea-header__badge">v1.5.2</span>
+					<span className="ea-header__badge">v1.5.3</span>
 				</div>
 				<p className="ea-header__subtitle">
 					Zero Trust security hardening for WordPress
