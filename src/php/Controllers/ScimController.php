@@ -1491,6 +1491,7 @@ final class ScimController {
 		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ) );
 		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
 		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
 
 		if ( $keep_suspended ) {
 			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), 'true' );

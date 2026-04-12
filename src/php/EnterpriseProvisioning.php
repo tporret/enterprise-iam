@@ -296,6 +296,22 @@ final class EnterpriseProvisioning {
 			update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ), (int) $session_expires );
 		}
 
+		$oidc_id_token = isset( $attributes['oidc_id_token'] ) && is_string( $attributes['oidc_id_token'] )
+			? $attributes['oidc_id_token']
+			: '';
+
+		if ( 'oidc' === ( $idp['protocol'] ?? '' ) && '' !== $oidc_id_token ) {
+			try {
+				update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ), Encryption::encrypt( $oidc_id_token ) );
+			} catch ( \RuntimeException $e ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Enterprise IAM – Failed to persist OIDC logout token hint: ' . $e->getMessage() );
+				delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
+			}
+		} else {
+			delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
+		}
+
 		// Use a browser-session cookie (not persistent "remember me") so
 		// closing the browser ends the session. The `auth_cookie_expiration`
 		// filter in Core.php further caps the server-side lifetime.

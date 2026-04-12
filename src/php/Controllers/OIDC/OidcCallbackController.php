@@ -180,6 +180,8 @@ final class OidcCallbackController {
 			// Authenticate performs the token exchange and JWT verification
 			// (signature via JWKS, audience, expiry, nonce).
 			$oidc->authenticate();
+			$id_token = $oidc->getIdToken();
+			$id_token = is_string( $id_token ) ? $id_token : '';
 
 			// ── Extract user claims ─────────────────────────────────────
 			$use_custom = ! empty( $idp['override_attribute_mapping'] );
@@ -252,6 +254,7 @@ final class OidcCallbackController {
 				'groups'         => array_map( 'sanitize_text_field', $groups ),
 				'idp_uid'        => sanitize_text_field( $sub ),
 				'idp_issuer'     => esc_url_raw( $iss ),
+				'oidc_id_token'  => $id_token,
 				'email_verified' => ( true === $email_verified || 'true' === $email_verified ),
 			);
 

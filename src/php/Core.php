@@ -208,29 +208,21 @@ final class Core {
 
 		// OIDC RP-Initiated Logout.
 		if ( 'oidc' === $protocol && ! empty( $idp['end_session_endpoint'] ) ) {
-			$redirect = add_query_arg(
-				array(
-					'post_logout_redirect_uri' => rawurlencode( wp_login_url() ),
-					'client_id'                => rawurlencode( $idp['client_id'] ?? '' ),
-				),
-				$idp['end_session_endpoint']
-			);
+			$redirect = $this->build_oidc_logout_redirect( $idp, $user_id );
 		}
 
 		// SAML Single Logout.
 		if ( 'saml' === $protocol && ! empty( $idp['slo_url'] ) ) {
 			$redirect = add_query_arg(
 				array(
-					'RelayState' => rawurlencode( wp_login_url() ),
+					'RelayState' => $this->logout_complete_url(),
 				),
 				$idp['slo_url']
 			);
 		}
 
 		if ( '' !== $redirect ) {
-			// Clean up SSO session meta.
-			delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
-			delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
+			$this->clear_sso_session_meta( $user_id );
 
 			// Redirect immediately to the IdP logout endpoint.
 			wp_redirect( $redirect );
@@ -250,9 +242,12 @@ final class Core {
 		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 		$idp          = ! empty( $sso_provider ) ? IdpManager::find( $sso_provider ) : null;
 
-		// Clean up SSO session meta.
-		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
-		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
+		$oidc_logout_redirect = '';
+		if ( $idp && ! empty( $idp['enabled'] ) && 'oidc' === ( $idp['protocol'] ?? '' ) && ! empty( $idp['end_session_endpoint'] ) ) {
+			$oidc_logout_redirect = $this->build_oidc_logout_redirect( $idp, $user_id );
+		}
+
+		$this->clear_sso_session_meta( $user_id );
 
 		wp_logout();
 
@@ -264,14 +259,8 @@ final class Core {
 			$protocol = $idp['protocol'] ?? '';
 
 			// OIDC RP-Initiated Logout (RFC 9207 / OpenID Connect RP-Initiated Logout 1.0).
-			if ( 'oidc' === $protocol && ! empty( $idp['end_session_endpoint'] ) ) {
-				$redirect = add_query_arg(
-					array(
-						'post_logout_redirect_uri' => rawurlencode( wp_login_url() ),
-						'client_id'                => rawurlencode( $idp['client_id'] ?? '' ),
-					),
-					$idp['end_session_endpoint']
-				);
+			if ( 'oidc' === $protocol && '' !== $oidc_logout_redirect ) {
+				$redirect = $oidc_logout_redirect;
 				wp_safe_redirect( $redirect );
 				exit;
 			}
@@ -280,7 +269,7 @@ final class Core {
 			if ( 'saml' === $protocol && ! empty( $idp['slo_url'] ) ) {
 				$redirect = add_query_arg(
 					array(
-						'RelayState' => rawurlencode( wp_login_url() ),
+						'RelayState' => $this->logout_complete_url(),
 					),
 					$idp['slo_url']
 				);
@@ -310,6 +299,71 @@ final class Core {
 
 		wp_safe_redirect( $redirect );
 		exit;
+	}
+
+	/**
+	 * Build an OIDC RP-initiated logout redirect with the strongest available hints.
+	 */
+	private function build_oidc_logout_redirect( array $idp, int $user_id ): string {
+		$args = array(
+			'post_logout_redirect_uri' => $this->logout_complete_url(),
+		);
+
+		$client_id = isset( $idp['client_id'] ) && is_string( $idp['client_id'] )
+			? trim( $idp['client_id'] )
+			: '';
+		if ( '' !== $client_id ) {
+			$args['client_id'] = $client_id;
+		}
+
+		$id_token_hint = $this->read_oidc_logout_token_hint( $user_id );
+		if ( '' !== $id_token_hint ) {
+			$args['id_token_hint'] = $id_token_hint;
+		}
+
+		return add_query_arg( $args, (string) $idp['end_session_endpoint'] );
+	}
+
+	/**
+	 * Return the post-logout landing page and suppress automatic SSO re-entry.
+	 */
+	private function logout_complete_url(): string {
+		return add_query_arg( 'loggedout', 'true', wp_login_url() );
+	}
+
+	/**
+	 * Remove SSO session metadata after logout or deprovisioning.
+	 */
+	private function clear_sso_session_meta( int $user_id ): void {
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
+		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
+	}
+
+	/**
+	 * Read the encrypted ID token captured during OIDC login for logout reuse.
+	 */
+	private function read_oidc_logout_token_hint( int $user_id ): string {
+		$stored = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ), true );
+		if ( ! is_string( $stored ) || '' === $stored ) {
+			return '';
+		}
+
+		$id_token = Encryption::decrypt( $stored );
+		if ( ! is_string( $id_token ) ) {
+			return '';
+		}
+
+		$id_token = trim( $id_token );
+
+		return $this->is_jwt_like_token( $id_token ) ? $id_token : '';
+	}
+
+	/**
+	 * Accept JWS and JWE compact serializations used by ID tokens.
+	 */
+	private function is_jwt_like_token( string $token ): bool {
+		return 1 === preg_match( '/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){2,4}$/', $token );
 	}
 
 	/**
