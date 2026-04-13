@@ -59,6 +59,21 @@ import './passkey-login.css';
 		} );
 	}
 
+	function currentRedirectTarget() {
+		var params = new URLSearchParams( window.location.search );
+		return params.get( 'redirect_to' ) || '';
+	}
+
+	function clearLocalFlowQuery() {
+		var url = new URL( window.location.href );
+		if ( ! url.searchParams.has( 'ea_local_flow' ) ) {
+			return;
+		}
+
+		url.searchParams.delete( 'ea_local_flow' );
+		window.history.replaceState( {}, document.title, url.toString() );
+	}
+
 	// ── DOM references ──────────────────────────────────────────────────
 
 	var form, userLogin, userLabel;
@@ -195,22 +210,22 @@ import './passkey-login.css';
 
 			doFetch( 'route-login', {
 				method: 'POST',
-				body: JSON.stringify( { email: email } ),
+				body: JSON.stringify( {
+					email: email,
+					redirect_to: currentRedirectTarget(),
+				} ),
 			} )
 			.then( function ( data ) {
 				if ( data.error ) {
 					throw new Error( data.error );
 				}
 
-				if ( data.method === 'sso' ) {
-					setStatus( 'ea-route-status',
-						'Redirecting to ' + ( data.provider_name || 'SSO' ) + '…',
-						false
-					);
-					window.location.href = data.redirect_url;
-				} else {
-					transitionToStep2( email );
+				if ( ! data.redirect_url ) {
+					throw new Error( 'Could not continue login. Please try again.' );
 				}
+
+				setStatus( 'ea-route-status', 'Continuing…', false );
+				window.location.href = data.redirect_url;
 			} )
 			.catch( function ( err ) {
 				setStatus( 'ea-route-status', err.message || 'Routing failed.', true );
@@ -226,6 +241,40 @@ import './passkey-login.css';
 				transitionToStep1();
 			} );
 		}
+	}
+
+	function resumeLocalFlow() {
+		var params = new URLSearchParams( window.location.search );
+		var flow = params.get( 'ea_local_flow' );
+
+		if ( ! flow || ! userLogin ) {
+			return;
+		}
+
+		setStatus( 'ea-route-status', 'Continuing…', false );
+
+		doFetch( 'route-login/local-options?flow=' + encodeURIComponent( flow ) )
+			.then( function ( data ) {
+				if ( data.error ) {
+					throw new Error( data.error );
+				}
+
+				if ( ! data.email ) {
+					throw new Error( 'Login step expired. Please enter your email again.' );
+				}
+
+				transitionToStep2( data.email );
+				setStatus( 'ea-route-status', '', false );
+				clearLocalFlowQuery();
+			} )
+			.catch( function ( err ) {
+				clearLocalFlowQuery();
+				setStatus(
+					'ea-route-status',
+					err.message || 'Login step expired. Please enter your email again.',
+					true
+				);
+			} );
 	}
 
 	// ── Step 2: Passkey authentication ──────────────────────────────────
@@ -343,5 +392,6 @@ import './passkey-login.css';
 		setupStep1();
 		initRouting();
 		initPasskey();
+		resumeLocalFlow();
 	} );
 } )();

@@ -26,6 +26,8 @@ use EnterpriseAuth\Plugin\Controllers\SAML\SamlMetadataController;
  */
 final class Core {
 
+	private bool $preserve_last_idp_cookie_on_logout = false;
+
 	public function init(): void {
 		// Security hardening – runs on every request.
 		( new SecurityManager() )->init();
@@ -193,6 +195,12 @@ final class Core {
 	 * finishes its logout sequence.
 	 */
 	public function handle_sso_global_logout( int $user_id ): void {
+		if ( ! $this->preserve_last_idp_cookie_on_logout ) {
+			$this->clear_last_idp_cookie();
+		}
+
+		$this->preserve_last_idp_cookie_on_logout = false;
+
 		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 		if ( empty( $sso_provider ) ) {
 			return; // Local account — no IdP to notify.
@@ -247,6 +255,7 @@ final class Core {
 			$oidc_logout_redirect = $this->build_oidc_logout_redirect( $idp, $user_id );
 		}
 
+		$this->preserve_last_idp_cookie_on_logout = true;
 		$this->clear_sso_session_meta( $user_id );
 
 		wp_logout();
@@ -338,6 +347,29 @@ final class Core {
 		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ) );
 		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ) );
 		delete_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
+	}
+
+	/**
+	 * Clear the long-lived last-IdP affinity cookie after an explicit logout.
+	 */
+	private function clear_last_idp_cookie(): void {
+		if ( headers_sent() ) {
+			return;
+		}
+
+		$options = array(
+			'expires'  => time() - YEAR_IN_SECONDS,
+			'path'     => COOKIEPATH,
+			'secure'   => is_ssl(),
+			'httponly' => true,
+			'samesite' => 'Lax',
+		);
+
+		if ( '' !== COOKIE_DOMAIN ) {
+			$options['domain'] = COOKIE_DOMAIN;
+		}
+
+		setcookie( self::last_idp_cookie_name(), ' ', $options );
 	}
 
 	/**

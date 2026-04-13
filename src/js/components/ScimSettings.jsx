@@ -34,6 +34,7 @@ export default function ScimSettings( { showToast, settings, saving, updateSetti
 		if ( tokenRef.current ) {
 			tokenRef.current.select();
 			navigator.clipboard.writeText( tokenRef.current.value ).then( () => {
+				setToken( null );
 				showToast( 'Token copied to clipboard.' );
 			} );
 		}

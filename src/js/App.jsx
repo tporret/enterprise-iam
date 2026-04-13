@@ -16,7 +16,6 @@ export default function App() {
 		session_timeout: 8,
 		deprovision_steward_user_id: 0,
 		deprovision_steward_options: [],
-		deprovision_steward_user: null,
 	} );
 	const [ saving, setSaving ] = useState( false );
 	const [ loaded, setLoaded ] = useState( false );

@@ -156,7 +156,6 @@ final class SettingsController {
 			'role_ceiling'    => $ceiling,
 			'session_timeout' => $timeout,
 			'deprovision_steward_user_id' => $steward_user_id,
-			'deprovision_steward_user'    => self::format_steward_user( $steward_user_id ),
 			'deprovision_steward_options' => self::get_steward_options(),
 		);
 	}

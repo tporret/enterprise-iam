@@ -151,7 +151,7 @@ export default function OidcSettings( { showToast } ) {
 
 	// ── Editing helpers ─────────────────────────────────────────────────
 
-	const startEdit = useCallback( ( idp ) => {
+	const openEditor = useCallback( ( idp ) => {
 		const mapped = Object.entries( idp.role_mapping || {} ).map(
 			( [ group, role ] ) => ( { group, role } )
 		);
@@ -163,9 +163,21 @@ export default function OidcSettings( { showToast } ) {
 		setDiscoveryUrl( '' );
 	}, [] );
 
+	const startEdit = useCallback( async ( id ) => {
+		try {
+			const idp = await apiFetch( {
+				path: `enterprise-auth/v1/idps/${ id }`,
+			} );
+
+			openEditor( idp );
+		} catch {
+			showToast( 'Failed to load OIDC configuration.', 'error' );
+		}
+	}, [ openEditor, showToast ] );
+
 	const startNew = useCallback( () => {
-		startEdit( { ...EMPTY_IDP } );
-	}, [ startEdit ] );
+		openEditor( { ...EMPTY_IDP } );
+	}, [ openEditor ] );
 
 	const cancelEdit = useCallback( () => {
 		setEditing( null );
@@ -561,7 +573,7 @@ export default function OidcSettings( { showToast } ) {
 											type="button"
 											className="ea-btn ea-btn--secondary ea-btn--small"
 											onClick={ () =>
-												startEdit( idp )
+												startEdit( idp.id )
 											}
 										>
 											Edit

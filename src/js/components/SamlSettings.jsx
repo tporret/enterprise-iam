@@ -126,7 +126,7 @@ export default function SamlSettings( { showToast } ) {
 		loadIdps();
 	} );
 
-	const startEdit = useCallback(
+	const openEditor = useCallback(
 		( idp ) => {
 			const mapped = Object.entries( idp.role_mapping || {} ).map(
 				( [ group, role ] ) => ( { group, role } )
@@ -140,9 +140,24 @@ export default function SamlSettings( { showToast } ) {
 		[]
 	);
 
+	const startEdit = useCallback(
+		async ( id ) => {
+			try {
+				const idp = await apiFetch( {
+					path: `enterprise-auth/v1/idps/${ id }`,
+				} );
+
+				openEditor( idp );
+			} catch {
+				showToast( 'Failed to load SAML configuration.', 'error' );
+			}
+		},
+		[ openEditor, showToast ]
+	);
+
 	const startNew = useCallback( () => {
-		startEdit( { ...EMPTY_IDP } );
-	}, [ startEdit ] );
+		openEditor( { ...EMPTY_IDP } );
+	}, [ openEditor ] );
 
 	const cancelEdit = useCallback( () => {
 		setEditing( null );
@@ -623,7 +638,7 @@ export default function SamlSettings( { showToast } ) {
 										<button
 											type="button"
 											className="ea-btn ea-btn--secondary ea-btn--small"
-											onClick={ () => startEdit( idp ) }
+											onClick={ () => startEdit( idp.id ) }
 										>
 											Edit
 										</button>{ ' ' }
