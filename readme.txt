@@ -17,6 +17,7 @@ Enterprise Auth provides a modern IAM layer for WordPress teams that need strong
 Key features:
 
 * Passkey authentication (WebAuthn) for passwordless login
+* Tenant-scoped device-bound passkey policy that can reject backup-eligible synced credentials during enrollment
 * Enterprise SSO with SAML 2.0 Service Provider flow
 * Enterprise SSO with OpenID Connect (Authorization Code flow)
 * Domain-based login routing (email domain -> provider)
@@ -42,6 +43,8 @@ Key features:
 * Force Sign-In Mode — per-IdP toggle to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
 * Capability-aware role hardening blocks custom elevated roles for standard tenant IdPs
 * First-link clean sweep revokes legacy local credentials when an account becomes IdP-managed
+* Controlled passkey step-up migration for tenants that move from synced passkeys to device-bound authenticators
+* Credential audit state for passkeys — compliance status, registration origin, and last-used timestamp retained per credential
 * Identity audit hooks (`ea_identity_event`) for SSO login and SCIM lifecycle actions
 * REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of sensitive dynamic responses
 * Correct local vs SSO routing — local accounts on SSO domains always reach the password form
@@ -93,6 +96,16 @@ The login router checks whether the specific account is a local account before r
 
 Yes. The plugin adds an identity-first login flow and passkey support on the native login page.
 
+= Can I require device-bound passkeys for a tenant? =
+
+Yes. The General settings tab includes a **Require Device-Bound Authenticators** toggle.
+
+When enabled, new passkey enrollment rejects backup-eligible synced credentials. Existing synced credentials are treated as legacy non-compliant and moved through a controlled step-up flow: if a user signs in with one, they are redirected to a self-service **Security Upgrade Required** page until they register a compliant replacement on the managed device.
+
+= Which platform passkeys are currently accepted by the local attestation bundle? =
+
+The bundled local trust policy currently covers Windows Hello Hardware, Windows Hello VBS, and the approved Android platform authenticator metadata shipped with the plugin. Apple enterprise passkey attestation is not bundled yet.
+
 = How does SCIM deprovisioning work on Multisite? =
 
 `DELETE /Users/{id}` removes the user from the current site and clears that site's identity bindings. `DELETE /Users/{id}?scope=network` preflights every site membership, applies per-site reassignment policy, and then removes the user from every site if the full plan is safe.
@@ -108,6 +121,10 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * OIDC nonce validation is handled through the OIDC client flow.
 * SAML assertions are validated by the SAML toolkit.
 * WebAuthn challenges are short-lived and verified server-side.
+* Device-bound passkey policy: optional tenant setting rejects backup-eligible synced passkeys during enrollment.
+* Passkey migration control: when strict device-bound mode is enabled, legacy non-compliant credentials trigger a self-service step-up flow instead of immediate lockout.
+* Passkey lifecycle tracking: credential records retain compliance status, registration origin, and last-used timestamps to support safe migration and audit workflows.
+* Local attestation bundle scope: current pinned metadata is limited to Windows Hello Hardware, Windows Hello VBS, and the bundled Android platform authenticator entry.
 * Break-glass admin isolation: user ID 1 and all administrator accounts are blocked from SSO login and SCIM modification.
 * Strict account binding: after first login, users are matched by immutable IdP UID (`sub` / NameID), not email. A mismatch blocks the login.
 * First-link clean sweep: when an existing local account becomes IdP-managed, the plugin revokes the local password, application passwords, and active sessions before finalizing the binding.

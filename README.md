@@ -5,6 +5,7 @@ Enterprise Auth is a WordPress plugin for enterprise-ready authentication, provi
 It combines:
 
 - Passkeys (WebAuthn)
+- Tenant-scoped device-bound passkey enforcement with controlled migration for legacy synced credentials
 - SAML 2.0 Service Provider support
 - OpenID Connect (OIDC) support
 - Domain-based SSO routing
@@ -24,12 +25,14 @@ It combines:
 - Force Sign-In Mode — per-IdP ForceAuthn (SAML) and prompt=login (OIDC)
 - First-link clean sweep for existing local accounts that become IdP-managed
 - Identity event audit hooks for SSO login and SCIM lifecycle actions
+- Passkey credential audit state with compliance status, registration origin, and last-used tracking
 - REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of dynamic responses
 
 ## Highlights
 
 - Identity-first login UX on `wp-login.php` with correct local vs SSO routing
 - Passwordless login with passkeys
+- Attestation-gated passkey enrollment with optional strict device-bound mode and automatic step-up migration for legacy synced credentials
 - SAML metadata endpoint and ACS flow
 - OIDC authorization and callback flow
 - Unified provisioning engine for SAML and OIDC
@@ -144,7 +147,20 @@ docker exec wordpress sh -lc \
 
 ### Passkeys
 
-Configure passkey registration and login for users through the plugin settings and login page flow.
+Enterprise Auth uses attestation-gated platform passkey enrollment for passwordless login.
+
+- Administrators can register managed passkeys from the Enterprise Auth admin UI.
+- The **Require Device-Bound Authenticators** tenant setting rejects backup-eligible synced passkeys during new enrollment.
+- When strict mode is enabled, existing backup-eligible credentials are marked as legacy non-compliant. A user who signs in with one of those credentials is redirected into a self-service **Security Upgrade Required** flow until they register a compliant replacement.
+- Credential records retain compliance status, registration origin, and last-used timestamps so the migration flow can distinguish compliant versus legacy credentials safely.
+
+Current attestation scope in the local trust bundle is limited to:
+
+- Windows Hello Hardware Authenticator
+- Windows Hello VBS Hardware Authenticator
+- Approved Android platform authenticator metadata bundled with the plugin
+
+Apple enterprise passkey attestation is not bundled yet.
 
 ### SAML
 
@@ -174,6 +190,7 @@ On single-site installs, the plugin keeps its legacy key layout and routing beha
 - SSO and SCIM identity bindings use site-scoped usermeta keys through `SiteMetaKeys`.
 - Seamless SSO re-auth uses a per-site last-IdP cookie to avoid cross-subdomain and cross-site bleed.
 - SAML request IDs, OIDC verification state, and WebAuthn challenge transients are blog-scoped.
+- Passkey step-up requirement flags are stored in site-scoped usermeta, so a strict passkey policy on one tenant does not spill into other sites on the same network.
 - SCIM provisioning can attach an existing network user to the current site instead of creating a duplicate global account.
 - SCIM network deprovision evaluates each site independently and applies per-site reassignment policy before removing memberships.
 
