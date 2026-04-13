@@ -7,6 +7,7 @@ const DEFAULT_STATE = {
 		lockdown_mode: true,
 		app_passwords: false,
 		require_device_bound_authenticators: false,
+		private_content_login_required: false,
 		role_ceiling: 'editor',
 		session_timeout: 8,
 	},
@@ -15,6 +16,7 @@ const DEFAULT_STATE = {
 			lockdown_mode: false,
 			app_passwords: false,
 			require_device_bound_authenticators: true,
+			private_content_login_required: true,
 			role_ceiling: false,
 			session_timeout: true,
 		},
@@ -162,6 +164,16 @@ export default function NetworkSettings( { showToast } ) {
 				metaDescription={ settings.policy.allow_site_overrides.require_device_bound_authenticators ? 'Sites may override this default.' : 'Sites inherit this value and cannot override it.' }
 			/>
 			<ToggleCard
+				title="Private Content Login Gate"
+				description="Require visitors to authenticate before viewing private posts or pages on this site. Public content remains publicly reachable."
+				checked={ settings.defaults.private_content_login_required }
+				disabled={ saving }
+				onChange={ ( value ) => updateDefault( 'private_content_login_required', value ) }
+				scopeLabel="Network Default"
+				scopeTone="network"
+				metaDescription={ settings.policy.allow_site_overrides.private_content_login_required ? 'Sites may override this default.' : 'Sites inherit this value and cannot override it.' }
+			/>
+			<ToggleCard
 				title="Application Passwords"
 				description="Allow non-administrator users to create Application Passwords."
 				checked={ settings.defaults.app_passwords }
@@ -244,6 +256,15 @@ export default function NetworkSettings( { showToast } ) {
 				checked={ settings.policy.allow_site_overrides.require_device_bound_authenticators }
 				disabled={ saving }
 				onChange={ ( value ) => updateOverridePolicy( 'require_device_bound_authenticators', value ) }
+				scopeLabel="Network Policy"
+				scopeTone="policy"
+			/>
+			<ToggleCard
+				title="Allow Site Override: Private Content Login Gate"
+				description="Permit site admins to decide whether private posts and pages require login locally."
+				checked={ settings.policy.allow_site_overrides.private_content_login_required }
+				disabled={ saving }
+				onChange={ ( value ) => updateOverridePolicy( 'private_content_login_required', value ) }
 				scopeLabel="Network Policy"
 				scopeTone="policy"
 			/>

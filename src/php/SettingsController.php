@@ -273,6 +273,11 @@ final class SettingsController {
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',
 			),
+			'private_content_login_required' => array(
+				'type'              => 'boolean',
+				'required'          => false,
+				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
 			'role_ceiling' => array(
 				'type'              => 'string',
 				'required'          => false,

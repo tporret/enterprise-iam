@@ -31,6 +31,7 @@ export default function App() {
 		lockdown_mode: true,
 		app_passwords: false,
 		require_device_bound_authenticators: false,
+		private_content_login_required: false,
 		role_ceiling: 'editor',
 		session_timeout: 8,
 		deprovision_steward_user_id: 0,
@@ -266,6 +267,16 @@ export default function App() {
 							scopeLabel={ getScopeMeta( 'require_device_bound_authenticators' )?.label || '' }
 							scopeTone={ getScopeMeta( 'require_device_bound_authenticators' )?.tone || 'site-only' }
 							metaDescription={ getScopeMeta( 'require_device_bound_authenticators' )?.description || '' }
+						/>
+						<ToggleCard
+							title="Private Content Login Gate"
+							description="Require visitors to authenticate before viewing private posts or pages. Public content remains publicly accessible."
+							checked={ settings.private_content_login_required }
+							disabled={ saving || getScopeMeta( 'private_content_login_required' )?.editable === false }
+							onChange={ ( val ) => updateSetting( 'private_content_login_required', val ) }
+							scopeLabel={ getScopeMeta( 'private_content_login_required' )?.label || '' }
+							scopeTone={ getScopeMeta( 'private_content_login_required' )?.tone || 'site-only' }
+							metaDescription={ getScopeMeta( 'private_content_login_required' )?.description || '' }
 						/>
 						<ToggleCard
 							title="Application Passwords"

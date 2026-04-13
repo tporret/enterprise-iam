@@ -13,13 +13,14 @@ final class EffectiveSettingsResolver {
 	private const OPTION_KEY = 'enterprise_auth_settings';
 	private const NETWORK_DEFAULTS_OPTION_KEY = 'enterprise_auth_network_defaults';
 	private const NETWORK_POLICY_OPTION_KEY = 'enterprise_auth_network_policy';
-	private const BOOLEAN_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators' );
-	private const NETWORK_DEFAULT_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'role_ceiling', 'session_timeout' );
+	private const BOOLEAN_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'private_content_login_required' );
+	private const NETWORK_DEFAULT_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'private_content_login_required', 'role_ceiling', 'session_timeout' );
 
 	private const DEFAULTS = array(
 		'lockdown_mode' => true,
 		'app_passwords' => false,
 		'require_device_bound_authenticators' => false,
+		'private_content_login_required' => false,
 		'role_ceiling' => 'editor',
 		'session_timeout' => 8,
 		'deprovision_steward_user_id' => 0,
@@ -30,6 +31,7 @@ final class EffectiveSettingsResolver {
 			'lockdown_mode' => false,
 			'app_passwords' => false,
 			'require_device_bound_authenticators' => true,
+			'private_content_login_required' => true,
 			'role_ceiling' => false,
 			'session_timeout' => true,
 			'deprovision_steward_user_id' => true,
@@ -82,6 +84,7 @@ final class EffectiveSettingsResolver {
 			'lockdown_mode' => (bool) $defaults['lockdown_mode'],
 			'app_passwords' => (bool) $defaults['app_passwords'],
 			'require_device_bound_authenticators' => (bool) $defaults['require_device_bound_authenticators'],
+			'private_content_login_required' => (bool) $defaults['private_content_login_required'],
 			'role_ceiling' => (string) $defaults['role_ceiling'],
 			'session_timeout' => (int) $defaults['session_timeout'],
 		);

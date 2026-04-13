@@ -33,6 +33,7 @@ final class Core {
 	public function init(): void {
 		// Security hardening – runs on every request.
 		( new SecurityManager() )->init();
+		( new AccessGate() )->init();
 
 		// Admin UI – only in wp-admin context.
 		if ( is_admin() ) {
