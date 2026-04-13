@@ -1,0 +1,4 @@
+{
+	"email": "__NETWORK_ADMIN_EMAIL__",
+	"expectedRedirectPath": "/wp-admin/"
+}

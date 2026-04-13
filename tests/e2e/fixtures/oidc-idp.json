@@ -1,0 +1,21 @@
+{
+	"provider_name": "E2E OIDC __RUN_ID__",
+	"protocol": "oidc",
+	"issuer": "https://example.com/e2e/oidc/__RUN_ID__",
+	"client_id": "e2e-client-id-__RUN_ID__",
+	"client_secret": "e2e-client-secret-__RUN_ID__",
+	"authorization_endpoint": "https://example.com/e2e/oidc/__RUN_ID__/oauth2/authorize",
+	"token_endpoint": "https://example.com/e2e/oidc/__RUN_ID__/oauth2/token",
+	"userinfo_endpoint": "https://example.com/e2e/oidc/__RUN_ID__/oauth2/userinfo",
+	"jwks_uri": "https://example.com/e2e/oidc/__RUN_ID__/.well-known/jwks.json",
+	"end_session_endpoint": "https://example.com/e2e/oidc/__RUN_ID__/oauth2/logout",
+	"domain_mapping": [
+		"oidc-__RUN_ID__.example.com"
+	],
+	"role_mapping": {
+		"engineering": "editor",
+		"*": "subscriber"
+	},
+	"enabled": true,
+	"force_reauth": false
+}

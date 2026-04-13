@@ -19,6 +19,7 @@ yarn-error.log*
 # ── Local environment files ───────────────────────────────────────────────────
 .env
 .env.*
+!.env.e2e.example
 
 # ── Dependencies (install on demand) ─────────────────────────────────────────
 node_modules/
@@ -28,10 +29,7 @@ vendor/
 *.map
 playwright-report/
 test-results/
-tests/
 testsite.md
-playwright.config.ts
-playwright.config.js
 
 # ── PHP / Composer temp files ─────────────────────────────────────────────────
 auth.json

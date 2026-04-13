@@ -1,0 +1,12 @@
+{
+	"schemas": [
+		"urn:ietf:params:scim:schemas:core:2.0:User"
+	],
+	"userName": "scim-e2e-__RUN_ID__@secaudit.localhost",
+	"externalId": "scim-e2e-__RUN_ID__",
+	"name": {
+		"givenName": "SCIM",
+		"familyName": "Fixture __RUN_ID__"
+	},
+	"active": true
+}

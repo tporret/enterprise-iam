@@ -1,0 +1,17 @@
+{
+	"provider_name": "E2E SAML __RUN_ID__",
+	"protocol": "saml",
+	"entity_id": "https://example.com/e2e/saml/__RUN_ID__/metadata",
+	"sso_url": "https://example.com/e2e/saml/__RUN_ID__/sso",
+	"slo_url": "https://example.com/e2e/saml/__RUN_ID__/slo",
+	"certificate": "-----BEGIN CERTIFICATE-----\nMIIC4jCCAcqgAwIBAgIUe2V0ZXN0LXNhbWwtZml4dHVyZS0wMDAwMA0GCSqGSIb3\nDQEBCwUAMBIxEDAOBgNVBAMMB0UyRSBJZFAwHhcNMjYwNDExMDAwMDAwWhcNMzYw\nNDA5MDAwMDAwWjASMRAwDgYDVQQDDAdFMkUgSWRQMIIBIjANBgkqhkiG9w0BAQEF\nAAOCAQ8AMIIBCgKCAQEAt+gM8i4U3lY5b5vZt3qNfA9WQ4Y1p6A5D0iD9mVYQ/3X\nS5Vx3M7S5zSxYV0fQ1xKJXW2sYIYw8b2c5M4yqf7r3u2U5f6mN1P5d4t7l9u6x0T\nYJjI2Q7k8n0S7mJ4fXcY2A6wG6u3nP8e9c0V4mVYqF7oP6E5lZq6WmA3H9p8m3c\n9OQd7z8R7JvM2cA1W9X4P9kA0H7X9M8mQ4YxR6n5S0xN6g9lP4Kq2t8mL0j7n4p\n5V3N6h7d8K9m0P1q2R3s4T5u6V7w8X9y0Z1a2B3c4D5e6F7g8H9i0J1k2L3m4N5\n6QIDAQABo1MwUTAdBgNVHQ4EFgQUm3Wf8l7M7uA9n0m5x2nQ9VYJqWwwHwYDVR0j\nBBgwFoAUm3Wf8l7M7uA9n0m5x2nQ9VYJqWwwDwYDVR0TAQH/BAUwAwEB/zANBgkq\nhkiG9w0BAQsFAAOCAQEAF3l1r4Y4rP9u8k7Vw7J4Z4U0wJ9yE4cQ5tXv9pJ5hT4M\n7n5dV8fL3aC6dK8sW9uY2iM1lB7oP2mN4kQ6xT8vW1yZ3aB5cD7eF9gH1jK3mN5p\nQ7rS9tU1vW3xY5zA7cD9eF1gH3jK5mN7pQ9rS1tU3vW5xY7zA9cB1dE3fG5hJ7kL\n9mN1pQ3rS5tU7vW9xY1zA3cD5eF7gH9iJ1kL3mN5pQ7rS9tU1vW3xY5zA7cD9eF1\ngH3jK5mN7pQ9rS1tU3vW5xY7zA9cB1dE3fG5hJ7kL9mNw==\n-----END CERTIFICATE-----",
+	"domain_mapping": [
+		"saml-__RUN_ID__.example.com"
+	],
+	"role_mapping": {
+		"contractors": "author",
+		"*": "subscriber"
+	},
+	"enabled": true,
+	"force_reauth": false
+}
