@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\FederationFlowGuard;
-use EnterpriseAuth\Plugin\IdpManager;
+use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
 use EnterpriseAuth\Plugin\SiteMetaKeys;
 
 /**
@@ -242,7 +242,7 @@ final class LoginRouter {
 		$parts  = explode( '@', $email );
 		$domain = strtolower( $parts[1] ?? '' );
 
-		$idp = IdpManager::find_by_domain( $domain );
+		$idp = CurrentSiteIdpManager::find_by_domain( $domain );
 		if ( ! $idp ) {
 			return array(
 				'outcome'     => 'local',

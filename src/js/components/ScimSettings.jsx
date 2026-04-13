@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
-export default function ScimSettings( { showToast, settings, saving, updateSetting } ) {
+export default function ScimSettings( { showToast, settings, saving, updateSetting, scopeMeta = null } ) {
 	const [ generating, setGenerating ] = useState( false );
 	const [ token, setToken ] = useState( null );
 	const [ baseUrl, setBaseUrl ] = useState(
@@ -112,7 +112,14 @@ export default function ScimSettings( { showToast, settings, saving, updateSetti
 			</div>
 
 			<div className="ea-card ea-card--wide">
-				<h3 className="ea-card__title">Deprovision Steward</h3>
+				<div className="ea-setting-header">
+					<h3 className="ea-card__title">Deprovision Steward</h3>
+					{ scopeMeta?.label && (
+						<span className={ `ea-scope-tag ea-scope-tag--${ scopeMeta.tone || 'site-only' }` }>
+							{ scopeMeta.label }
+						</span>
+					) }
+				</div>
 				<p className="ea-card__desc">
 					When SCIM deprovisions a user who still owns content on this
 					site, Enterprise Auth reassigns that content to this steward.
@@ -120,6 +127,9 @@ export default function ScimSettings( { showToast, settings, saving, updateSetti
 					deterministic local administrator. If no valid steward is
 					available, the delete request fails with a 409 response.
 				</p>
+				{ scopeMeta?.description && (
+					<p className="ea-scope-meta">{ scopeMeta.description }</p>
+				) }
 				<select
 					className="ea-input"
 					value={ settings?.deprovision_steward_user_id ?? 0 }

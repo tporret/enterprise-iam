@@ -441,7 +441,7 @@ final class EnterpriseProvisioning {
 	public static function assign_role( \WP_User $user, array $groups ): void {
 		// Aggregate role mappings across all configured IdPs.
 		$mapping = array();
-		foreach ( IdpManager::all() as $idp ) {
+		foreach ( CurrentSiteIdpManager::all() as $idp ) {
 			foreach ( self::decorate_role_mapping( (array) ( $idp['role_mapping'] ?? array() ), self::is_super_tenant_idp( $idp ) ) as $group => $definition ) {
 				$mapping[ $group ] = $definition;
 			}

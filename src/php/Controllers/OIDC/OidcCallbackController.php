@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\EnterpriseProvisioning;
+use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
 use EnterpriseAuth\Plugin\FederationErrorHandler;
 use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\IdpManager;
@@ -116,7 +117,8 @@ final class OidcCallbackController {
 		$idp_id = $state_data['idp_id'] ?? '';
 		$nonce  = $state_data['nonce'] ?? '';
 		$code_verifier = $state_data['code_verifier'] ?? '';
-		$idp    = IdpManager::find( $idp_id );
+		$blog_id = (int) ( $state_data['blog_id'] ?? get_current_blog_id() );
+		$idp    = CurrentSiteIdpManager::find_for_blog( $blog_id, (string) $idp_id );
 		$log_context = array(
 			'idp_id' => (string) $idp_id,
 		);

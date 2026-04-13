@@ -8,7 +8,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
 use EnterpriseAuth\Plugin\IdpManager;
+use EnterpriseAuth\Plugin\IdpView;
 
 /**
  * REST API controller for IdP configuration CRUD.
@@ -64,23 +66,43 @@ final class IdpController {
 	}
 
 	public function list_idps(): \WP_REST_Response {
-		$idps = array_map( array( $this, 'summary_view' ), IdpManager::all() );
+		$idps = array_map(
+			fn( array $idp ): array => IdpView::summary(
+				$idp,
+				array(
+					'managed_by_network' => CurrentSiteIdpManager::uses_network_control_plane(),
+				)
+			),
+			CurrentSiteIdpManager::all()
+		);
 
 		return new \WP_REST_Response( array_values( $idps ), 200 );
 	}
 
 	public function get_idp( \WP_REST_Request $request ): \WP_REST_Response {
 		$id  = $request->get_param( 'id' );
-		$idp = IdpManager::find( $id );
+		$idp = CurrentSiteIdpManager::find( sanitize_text_field( (string) $id ) );
 
 		if ( ! $idp ) {
 			return new \WP_REST_Response( array( 'error' => 'IdP not found.' ), 404 );
 		}
 
-		return new \WP_REST_Response( $this->detail_view( $idp ), 200 );
+		return new \WP_REST_Response(
+			IdpView::detail(
+				$idp,
+				array(
+					'managed_by_network' => CurrentSiteIdpManager::uses_network_control_plane(),
+				)
+			),
+			200
+		);
 	}
 
 	public function save_idp( \WP_REST_Request $request ): \WP_REST_Response {
+		if ( CurrentSiteIdpManager::uses_network_control_plane() ) {
+			return new \WP_REST_Response( array( 'error' => 'Identity providers are managed by Network Admin for this site.' ), 403 );
+		}
+
 		$raw = $request->get_json_params();
 
 		if ( empty( $raw ) || ! is_array( $raw ) ) {
@@ -121,10 +143,14 @@ final class IdpController {
 			);
 		}
 
-		return new \WP_REST_Response( $this->detail_view( $sanitized ), 200 );
+		return new \WP_REST_Response( IdpView::detail( $sanitized ), 200 );
 	}
 
 	public function delete_idp( \WP_REST_Request $request ): \WP_REST_Response {
+		if ( CurrentSiteIdpManager::uses_network_control_plane() ) {
+			return new \WP_REST_Response( array( 'error' => 'Identity providers are managed by Network Admin for this site.' ), 403 );
+		}
+
 		$id      = $request->get_param( 'id' );
 		$deleted = IdpManager::delete( $id );
 
@@ -135,55 +161,4 @@ final class IdpController {
 		return new \WP_REST_Response( array( 'deleted' => true ), 200 );
 	}
 
-	/**
-	 * Return the minimal IdP fields required by the list views.
-	 *
-	 * @param array<string, mixed> $idp
-	 * @return array<string, mixed>
-	 */
-	private function summary_view( array $idp ): array {
-		return array(
-			'id'            => sanitize_text_field( (string) ( $idp['id'] ?? '' ) ),
-			'provider_name' => sanitize_text_field( (string) ( $idp['provider_name'] ?? '' ) ),
-			'protocol'      => sanitize_key( (string) ( $idp['protocol'] ?? '' ) ),
-			'domain_mapping' => array_values( array_map( 'sanitize_text_field', (array) ( $idp['domain_mapping'] ?? array() ) ) ),
-			'enabled'       => ! empty( $idp['enabled'] ),
-		);
-	}
-
-	/**
-	 * Return the masked IdP fields required by the edit screens.
-	 *
-	 * @param array<string, mixed> $idp
-	 * @return array<string, mixed>
-	 */
-	private function detail_view( array $idp ): array {
-		return array(
-			'id'                         => sanitize_text_field( (string) ( $idp['id'] ?? '' ) ),
-			'provider_name'              => sanitize_text_field( (string) ( $idp['provider_name'] ?? '' ) ),
-			'provider_family'            => sanitize_key( (string) ( $idp['provider_family'] ?? '' ) ),
-			'protocol'                   => sanitize_key( (string) ( $idp['protocol'] ?? '' ) ),
-			'client_id'                  => sanitize_text_field( (string) ( $idp['client_id'] ?? '' ) ),
-			'client_secret'              => ! empty( $idp['client_secret'] ) ? '••••••••' : '',
-			'issuer'                     => esc_url_raw( (string) ( $idp['issuer'] ?? '' ) ),
-			'entity_id'                  => sanitize_text_field( (string) ( $idp['entity_id'] ?? '' ) ),
-			'certificate'                => sanitize_textarea_field( (string) ( $idp['certificate'] ?? '' ) ),
-			'authorization_endpoint'     => esc_url_raw( (string) ( $idp['authorization_endpoint'] ?? '' ) ),
-			'token_endpoint'             => esc_url_raw( (string) ( $idp['token_endpoint'] ?? '' ) ),
-			'userinfo_endpoint'          => esc_url_raw( (string) ( $idp['userinfo_endpoint'] ?? '' ) ),
-			'jwks_uri'                   => esc_url_raw( (string) ( $idp['jwks_uri'] ?? '' ) ),
-			'sso_url'                    => esc_url_raw( (string) ( $idp['sso_url'] ?? '' ) ),
-			'domain_mapping'             => array_values( array_map( 'sanitize_text_field', (array) ( $idp['domain_mapping'] ?? array() ) ) ),
-			'role_mapping'               => (array) ( $idp['role_mapping'] ?? array() ),
-			'super_tenant'               => ! empty( $idp['super_tenant'] ),
-			'enabled'                    => ! empty( $idp['enabled'] ),
-			'override_attribute_mapping' => ! empty( $idp['override_attribute_mapping'] ),
-			'custom_email_attr'          => sanitize_text_field( (string) ( $idp['custom_email_attr'] ?? '' ) ),
-			'custom_first_name_attr'     => sanitize_text_field( (string) ( $idp['custom_first_name_attr'] ?? '' ) ),
-			'custom_last_name_attr'      => sanitize_text_field( (string) ( $idp['custom_last_name_attr'] ?? '' ) ),
-			'force_reauth'               => ! empty( $idp['force_reauth'] ),
-			'end_session_endpoint'       => esc_url_raw( (string) ( $idp['end_session_endpoint'] ?? '' ) ),
-			'slo_url'                    => esc_url_raw( (string) ( $idp['slo_url'] ?? '' ) ),
-		);
-	}
 }

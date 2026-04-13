@@ -1,4 +1,4 @@
-import { useState, useCallback } from '@wordpress/element';
+import { useState, useCallback, useEffect } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 import AttributeMappingSection from './AttributeMappingSection';
 
@@ -69,7 +69,16 @@ function RoleMappingRow( { group, role, onChange, onRemove } ) {
 	);
 }
 
-export default function OidcSettings( { showToast } ) {
+export default function OidcSettings( {
+	showToast,
+	endpointBase = 'enterprise-auth/v1/idps',
+	allowMutations = true,
+	readOnlyNotice = '',
+	showAssignmentCount = false,
+	listTitle = 'OIDC Identity Providers',
+	addButtonLabel = '+ Add OIDC IdP',
+	emptyMessage,
+} ) {
 	const [ idps, setIdps ] = useState( [] );
 	const [ loaded, setLoaded ] = useState( false );
 	const [ editing, setEditing ] = useState( null );
@@ -83,7 +92,7 @@ export default function OidcSettings( { showToast } ) {
 
 	// Load IdPs on mount (filter to OIDC only for display).
 	const loadIdps = useCallback( () => {
-		apiFetch( { path: 'enterprise-auth/v1/idps' } )
+		apiFetch( { path: endpointBase } )
 			.then( ( data ) => {
 				const all = Array.isArray( data ) ? data : [];
 				setIdps( all.filter( ( idp ) => idp.protocol === 'oidc' ) );
@@ -92,12 +101,11 @@ export default function OidcSettings( { showToast } ) {
 			.catch( () => {
 				setLoaded( true );
 			} );
-	}, [] );
+	}, [ endpointBase ] );
 
-	// Run once on mount.
-	useState( () => {
+	useEffect( () => {
 		loadIdps();
-	} );
+	}, [ loadIdps ] );
 
 	// ── Discovery Auto-Fill ─────────────────────────────────────────────
 
@@ -166,14 +174,14 @@ export default function OidcSettings( { showToast } ) {
 	const startEdit = useCallback( async ( id ) => {
 		try {
 			const idp = await apiFetch( {
-				path: `enterprise-auth/v1/idps/${ id }`,
+				path: `${ endpointBase }/${ id }`,
 			} );
 
 			openEditor( idp );
 		} catch {
 			showToast( 'Failed to load OIDC configuration.', 'error' );
 		}
-	}, [ openEditor, showToast ] );
+	}, [ endpointBase, openEditor, showToast ] );
 
 	const startNew = useCallback( () => {
 		openEditor( { ...EMPTY_IDP } );
@@ -239,7 +247,7 @@ export default function OidcSettings( { showToast } ) {
 
 		try {
 			await apiFetch( {
-				path: 'enterprise-auth/v1/idps',
+				path: endpointBase,
 				method: 'POST',
 				data: payload,
 			} );
@@ -255,7 +263,7 @@ export default function OidcSettings( { showToast } ) {
 		} finally {
 			setSaving( false );
 		}
-	}, [ editing, roleMappings, domainText, showToast, cancelEdit, loadIdps ] );
+	}, [ endpointBase, editing, roleMappings, domainText, showToast, cancelEdit, loadIdps ] );
 
 	// ── Delete ──────────────────────────────────────────────────────────
 
@@ -263,7 +271,7 @@ export default function OidcSettings( { showToast } ) {
 		async ( id ) => {
 			try {
 				await apiFetch( {
-					path: `enterprise-auth/v1/idps/${ id }`,
+					path: `${ endpointBase }/${ id }`,
 					method: 'DELETE',
 				} );
 				showToast( 'IdP deleted.' );
@@ -272,7 +280,7 @@ export default function OidcSettings( { showToast } ) {
 				showToast( 'Failed to delete IdP.', 'error' );
 			}
 		},
-		[ showToast, loadIdps ]
+		[ endpointBase, showToast, loadIdps ]
 	);
 
 	if ( ! loaded ) {
@@ -505,6 +513,9 @@ export default function OidcSettings( { showToast } ) {
 	return (
 		<div className="ea-saml">
 			<div className="ea-card">
+				{ readOnlyNotice && (
+					<p className="ea-card__desc ea-card__desc--notice">{ readOnlyNotice }</p>
+				) }
 				<div
 					className="ea-card__body"
 					style={ {
@@ -513,15 +524,17 @@ export default function OidcSettings( { showToast } ) {
 					} }
 				>
 					<h3 className="ea-card__title" style={ { margin: 0 } }>
-						OIDC Identity Providers
+						{ listTitle }
 					</h3>
-					<button
-						type="button"
-						className="ea-btn ea-btn--primary ea-btn--small"
-						onClick={ startNew }
-					>
-						+ Add OIDC IdP
-					</button>
+					{ allowMutations && (
+						<button
+							type="button"
+							className="ea-btn ea-btn--primary ea-btn--small"
+							onClick={ startNew }
+						>
+							{ addButtonLabel }
+						</button>
+					) }
 				</div>
 
 				{ idps.length === 0 && (
@@ -529,8 +542,7 @@ export default function OidcSettings( { showToast } ) {
 						className="ea-card__desc"
 						style={ { marginTop: 12 } }
 					>
-						No OIDC providers configured yet. Click &ldquo;Add
-						OIDC IdP&rdquo; to set up your first connection.
+						{ emptyMessage || 'No OIDC providers configured yet. Click "Add OIDC IdP" to set up your first connection.' }
 					</p>
 				) }
 
@@ -540,8 +552,9 @@ export default function OidcSettings( { showToast } ) {
 							<tr>
 								<th>Name</th>
 								<th>Domains</th>
+								{ showAssignmentCount && <th>Sites</th> }
 								<th>Status</th>
-								<th>Actions</th>
+								{ allowMutations && <th>Actions</th> }
 							</tr>
 						</thead>
 						<tbody>
@@ -555,6 +568,7 @@ export default function OidcSettings( { showToast } ) {
 											', '
 										) || '\u2014' }
 									</td>
+									{ showAssignmentCount && <td>{ idp.assignment_count || 0 }</td> }
 									<td>
 										<span
 											className={ `ea-badge ${
@@ -568,26 +582,28 @@ export default function OidcSettings( { showToast } ) {
 												: 'Inactive' }
 										</span>
 									</td>
-									<td>
-										<button
-											type="button"
-											className="ea-btn ea-btn--secondary ea-btn--small"
-											onClick={ () =>
-												startEdit( idp.id )
-											}
-										>
-											Edit
-										</button>{ ' ' }
-										<button
-											type="button"
-											className="ea-btn ea-btn--danger ea-btn--small"
-											onClick={ () =>
-												handleDelete( idp.id )
-											}
-										>
-											Delete
-										</button>
-									</td>
+									{ allowMutations && (
+										<td>
+											<button
+												type="button"
+												className="ea-btn ea-btn--secondary ea-btn--small"
+												onClick={ () =>
+													startEdit( idp.id )
+												}
+											>
+												Edit
+											</button>{ ' ' }
+											<button
+												type="button"
+												className="ea-btn ea-btn--danger ea-btn--small"
+												onClick={ () =>
+													handleDelete( idp.id )
+												}
+											>
+												Delete
+											</button>
+										</td>
+									) }
 								</tr>
 							) ) }
 						</tbody>

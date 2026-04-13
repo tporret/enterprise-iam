@@ -14,10 +14,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class AdminUI {
 
 	private const MENU_SLUG = 'enterprise-auth';
+	private const NETWORK_MENU_SLUG = 'enterprise-auth-network';
+	private const NETWORK_PROVIDERS_SLUG = 'enterprise-auth-network-providers';
+	private const NETWORK_ASSIGNMENTS_SLUG = 'enterprise-auth-network-assignments';
+	private const NETWORK_POLICY_SLUG = 'enterprise-auth-network-policy';
 	private const STEP_UP_MENU_SLUG = 'enterprise-auth-security-upgrade';
 
 	public function init(): void {
 		add_action( 'admin_menu', array( $this, 'register_menu' ) );
+		add_action( 'network_admin_menu', array( $this, 'register_network_menu' ) );
 	}
 
 	/**
@@ -44,11 +49,91 @@ final class AdminUI {
 		);
 	}
 
+	public function register_network_menu(): void {
+		if ( ! NetworkMode::is_network_mode() ) {
+			return;
+		}
+
+		add_menu_page(
+			__( 'Enterprise Auth', 'enterprise-auth' ),
+			__( 'Enterprise Auth', 'enterprise-auth' ),
+			'manage_network_options',
+			self::NETWORK_MENU_SLUG,
+			array( $this, 'render_network_overview_page' ),
+			'dashicons-shield-alt',
+			3
+		);
+
+		add_submenu_page(
+			self::NETWORK_MENU_SLUG,
+			__( 'Overview', 'enterprise-auth' ),
+			__( 'Overview', 'enterprise-auth' ),
+			'manage_network_options',
+			self::NETWORK_MENU_SLUG,
+			array( $this, 'render_network_overview_page' )
+		);
+
+		add_submenu_page(
+			self::NETWORK_MENU_SLUG,
+			__( 'Identity Providers', 'enterprise-auth' ),
+			__( 'Identity Providers', 'enterprise-auth' ),
+			'manage_network_options',
+			self::NETWORK_PROVIDERS_SLUG,
+			array( $this, 'render_network_providers_page' )
+		);
+
+		add_submenu_page(
+			self::NETWORK_MENU_SLUG,
+			__( 'Site Assignments', 'enterprise-auth' ),
+			__( 'Site Assignments', 'enterprise-auth' ),
+			'manage_network_options',
+			self::NETWORK_ASSIGNMENTS_SLUG,
+			array( $this, 'render_network_assignments_page' )
+		);
+
+		add_submenu_page(
+			self::NETWORK_MENU_SLUG,
+			__( 'Defaults & Policy', 'enterprise-auth' ),
+			__( 'Defaults & Policy', 'enterprise-auth' ),
+			'manage_network_options',
+			self::NETWORK_POLICY_SLUG,
+			array( $this, 'render_network_policy_page' )
+		);
+	}
+
 	/**
 	 * Render the mount-point div and enqueue React assets.
 	 */
 	public function render_page(): void {
-		$this->enqueue_assets( array( 'screen' => 'settings' ) );
+		$this->enqueue_assets(
+			array(
+				'screen' => NetworkMode::is_network_mode() ? 'site-settings' : 'settings',
+			)
+		);
+
+		echo '<div id="enterprise-auth-root"></div>';
+	}
+
+	public function render_network_overview_page(): void {
+		$this->enqueue_assets( array( 'screen' => 'network-overview' ) );
+
+		echo '<div id="enterprise-auth-root"></div>';
+	}
+
+	public function render_network_providers_page(): void {
+		$this->enqueue_assets( array( 'screen' => 'network-idps' ) );
+
+		echo '<div id="enterprise-auth-root"></div>';
+	}
+
+	public function render_network_assignments_page(): void {
+		$this->enqueue_assets( array( 'screen' => 'network-assignments' ) );
+
+		echo '<div id="enterprise-auth-root"></div>';
+	}
+
+	public function render_network_policy_page(): void {
+		$this->enqueue_assets( array( 'screen' => 'network-policy' ) );
 
 		echo '<div id="enterprise-auth-root"></div>';
 	}
@@ -102,10 +187,15 @@ final class AdminUI {
 			'enterpriseAuth',
 			array_merge(
 				array(
-				'restUrl' => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
-				'nonce'   => wp_create_nonce( 'wp_rest' ),
-				'screen'  => 'settings',
-			),
+					'restUrl'             => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
+					'nonce'               => wp_create_nonce( 'wp_rest' ),
+					'screen'              => 'settings',
+					'isNetworkMode'       => NetworkMode::is_network_mode(),
+					'isNetworkAdmin'      => is_network_admin(),
+					'isNetworkManagedSite' => ! is_network_admin() && CurrentSiteIdpManager::uses_network_control_plane(),
+					'idpManagementScope'  => CurrentSiteIdpManager::uses_network_control_plane() ? 'network' : 'site',
+					'blogId'              => get_current_blog_id(),
+				),
 				$context
 			)
 		);

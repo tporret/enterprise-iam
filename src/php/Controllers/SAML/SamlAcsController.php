@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\FederationErrorHandler;
 use EnterpriseAuth\Plugin\FederationFlowGuard;
-use EnterpriseAuth\Plugin\IdpManager;
+use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
 use EnterpriseAuth\Plugin\EnterpriseProvisioning;
 use EnterpriseAuth\Plugin\SamlSettingsFactory;
 
@@ -67,7 +67,8 @@ final class SamlAcsController {
 
 		$idp_id     = sanitize_text_field( (string) ( $flow_data['idp_id'] ?? '' ) );
 		$request_id = sanitize_text_field( (string) ( $flow_data['request_id'] ?? '' ) );
-		$idp        = IdpManager::find( $idp_id );
+		$blog_id    = (int) ( $flow_data['blog_id'] ?? get_current_blog_id() );
+		$idp        = CurrentSiteIdpManager::find_for_blog( $blog_id, $idp_id );
 		$log_context['idp_id']   = $idp_id;
 		$log_context['flow_key'] = $flow_key;
 

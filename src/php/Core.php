@@ -10,6 +10,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\Controllers\IdpController;
 use EnterpriseAuth\Plugin\Controllers\LoginRouter;
+use EnterpriseAuth\Plugin\Controllers\NetworkAdminController;
+use EnterpriseAuth\Plugin\Controllers\NetworkSettingsController;
 use EnterpriseAuth\Plugin\Controllers\ScimController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcCallbackController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcLoginController;
@@ -45,6 +47,8 @@ final class Core {
 				( new PasskeyRegistrationController() )->register_routes();
 				( new PasskeyLoginController() )->register_routes();
 				( new IdpController() )->register_routes();
+				( new NetworkAdminController() )->register_routes();
+				( new NetworkSettingsController() )->register_routes();
 				( new LoginRouter() )->register_routes();
 				( new SamlMetadataController() )->register_routes();
 				( new SamlLoginController() )->register_routes();
@@ -208,7 +212,7 @@ final class Core {
 			return; // Local account — no IdP to notify.
 		}
 
-		$idp = IdpManager::find( $sso_provider );
+		$idp = CurrentSiteIdpManager::find( (string) $sso_provider );
 		if ( ! $idp || empty( $idp['enabled'] ) ) {
 			return;
 		}
@@ -250,7 +254,7 @@ final class Core {
 	private function force_sso_logout( int $user_id ): void {
 		// Read the SSO provider binding BEFORE destroying the session.
 		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
-		$idp          = ! empty( $sso_provider ) ? IdpManager::find( $sso_provider ) : null;
+		$idp          = ! empty( $sso_provider ) ? CurrentSiteIdpManager::find( (string) $sso_provider ) : null;
 
 		$oidc_logout_redirect = '';
 		if ( $idp && ! empty( $idp['enabled'] ) && 'oidc' === ( $idp['protocol'] ?? '' ) && ! empty( $idp['end_session_endpoint'] ) ) {
@@ -442,7 +446,7 @@ final class Core {
 			return;
 		}
 
-		$idp = IdpManager::find( $last_idp_id );
+		$idp = CurrentSiteIdpManager::find( (string) $last_idp_id );
 		if ( ! $idp || empty( $idp['enabled'] ) ) {
 			return;
 		}

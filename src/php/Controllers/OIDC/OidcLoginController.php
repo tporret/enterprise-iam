@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\FederationFlowGuard;
+use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
 use EnterpriseAuth\Plugin\IdpManager;
 
 /**
@@ -47,7 +48,7 @@ final class OidcLoginController {
 	 */
 	public function login( \WP_REST_Request $request ): \WP_REST_Response {
 		$idp_id = $request->get_param( 'idp_id' );
-		$idp    = IdpManager::find( $idp_id );
+		$idp    = CurrentSiteIdpManager::find( (string) $idp_id );
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'oidc' ) {
 			return new \WP_REST_Response( array( 'error' => 'OIDC IdP not found.' ), 404 );
