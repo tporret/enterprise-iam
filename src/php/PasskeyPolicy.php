@@ -31,7 +31,9 @@ final class PasskeyPolicy {
 		}
 
 		if ( true === $credential_source->backupEligible ) {
-			throw new \RuntimeException( 'Synced backup-eligible passkeys are not permitted when a tenant requires a device-bound passkey.' );
+			throw AttestationPolicyException::credential_sync_not_permitted(
+				'Synced backup-eligible passkeys are not permitted when a tenant requires a device-bound passkey.'
+			);
 		}
 	}
 

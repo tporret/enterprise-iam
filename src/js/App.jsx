@@ -118,7 +118,7 @@ export default function App() {
 						/>
 						<ToggleCard
 							title="Require Device-Bound Authenticators"
-							description="Reject backup-eligible synced passkeys during enrollment. Existing non-compliant passkeys enter a controlled step-up migration path when this is enabled."
+							description="Reject backup-eligible synced passkeys during enrollment. Launch support is Safari-first on managed Apple devices and other approved platform authenticators. Existing non-compliant passkeys enter a controlled step-up migration path when this is enabled."
 							checked={ settings.require_device_bound_authenticators }
 							disabled={ saving }
 							onChange={ ( val ) => updateSetting( 'require_device_bound_authenticators', val ) }

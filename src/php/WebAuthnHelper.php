@@ -115,20 +115,34 @@ final class WebAuthnHelper {
 	 * Enforce the plugin's strict attestation policy after ceremony validation.
 	 */
 	public static function enforce_attestation_policy( PublicKeyCredentialSource $credential_source ): void {
+		if ( 'none' === strtolower( $credential_source->attestationType ) ) {
+			throw AttestationPolicyException::attestation_format_rejected(
+				'The authenticator returned attestation format "none", which is non-verifiable and not accepted for managed enrollment.'
+			);
+		}
+
 		if ( ! $credential_source->trustPath instanceof CertificateTrustPath ) {
-			throw AuthenticatorResponseVerificationException::create( 'Passkey attestation did not include a certificate trust path.' );
+			throw AttestationPolicyException::attestation_trust_path_required(
+				'Passkey attestation did not include a certificate trust path.'
+			);
 		}
 
 		if ( self::NULL_AAGUID === strtolower( $credential_source->aaguid->toRfc4122() ) ) {
-			throw AuthenticatorResponseVerificationException::create( 'Passkey attestation did not provide a pinned authenticator identity.' );
+			throw AttestationPolicyException::attestation_aaguid_required(
+				'Passkey attestation did not provide a pinned authenticator identity.'
+			);
 		}
 
 		if ( ! in_array( $credential_source->attestationType, self::allowed_attestation_types(), true ) ) {
-			throw AuthenticatorResponseVerificationException::create( 'Only direct certificate-backed attestation is accepted.' );
+			throw AttestationPolicyException::attestation_format_rejected(
+				'Only direct certificate-backed attestation is accepted.'
+			);
 		}
 
 		if ( ! in_array( strtolower( $credential_source->aaguid->toRfc4122() ), self::trust_bundle()->supported_aaguids(), true ) ) {
-			throw AuthenticatorResponseVerificationException::create( 'This platform authenticator is not in the local trust bundle.' );
+			throw AttestationPolicyException::trust_bundle_mismatch(
+				'This platform authenticator is not in the local trust bundle.'
+			);
 		}
 	}
 

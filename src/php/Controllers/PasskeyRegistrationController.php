@@ -190,9 +190,12 @@ final class PasskeyRegistrationController {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 				error_log( 'Enterprise IAM – Passkey registration error: ' . $e->getMessage() );
 			}
+
+			$registration_error = $this->registration_error( $e );
+
 			return $this->error_response(
-				'unsupported_authenticator',
-				$this->registration_error_message( $e )
+				$registration_error['code'],
+				$registration_error['message']
 			);
 		}
 
@@ -239,7 +242,17 @@ final class PasskeyRegistrationController {
 		);
 	}
 
-	private function registration_error_message( \Throwable $error ): string {
+	/**
+	 * @return array{code: string, message: string}
+	 */
+	private function registration_error( \Throwable $error ): array {
+		if ( $error instanceof \EnterpriseAuth\Plugin\AttestationPolicyException ) {
+			return array(
+				'code' => $error->policy_code(),
+				'message' => $error->user_message(),
+			);
+		}
+
 		$message = $error->getMessage();
 
 		if (
@@ -247,17 +260,29 @@ final class PasskeyRegistrationController {
 			|| str_contains( $message, 'direct certificate-backed attestation' )
 			|| str_contains( $message, 'pinned authenticator identity' )
 		) {
-			return 'This passkey does not provide the enterprise attestation required for enrollment. Use a built-in platform authenticator on a managed device, not a roaming key or a legacy self-attested passkey.';
+			return array(
+				'code' => 'attestation_policy_rejected',
+				'message' => 'This passkey does not provide the enterprise attestation required for enrollment. Use the built-in platform authenticator on a managed Safari device, not a roaming key or a non-verifiable passkey flow.',
+			);
 		}
 
 		if ( str_contains( $message, 'local trust bundle' ) ) {
-			return 'This platform authenticator is not in the current enterprise trust bundle. Enrollment is currently limited to Windows Hello hardware or VBS authenticators and approved Android platform authenticators.';
+			return array(
+				'code' => 'trust_bundle_mismatch',
+				'message' => 'This platform authenticator is not in the current enterprise trust bundle. Launch support is limited to the current managed platform authenticator policy and does not include relaxed browser fallback paths.',
+			);
 		}
 
 		if ( str_contains( $message, 'device-bound passkey' ) || str_contains( $message, 'Synced backup-eligible passkeys' ) ) {
-			return 'Your organization requires a device-bound passkey on this managed device. Synced passkeys are not permitted.';
+			return array(
+				'code' => 'credential_sync_not_permitted',
+				'message' => 'Your organization requires a device-bound passkey on this managed device. Synced passkeys are not permitted.',
+			);
 		}
 
-		return 'Passkey registration failed because the authenticator did not meet the current enterprise policy. Review the passkey requirements on this page and try again from a supported managed device.';
+		return array(
+			'code' => 'unsupported_authenticator',
+			'message' => 'Passkey registration failed because the authenticator did not meet the current enterprise policy. Review the passkey requirements on this page and try again from a supported managed device.',
+		);
 	}
 }

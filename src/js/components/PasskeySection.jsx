@@ -55,11 +55,12 @@ export default function PasskeySection( {
 } ) {
 	const [ registering, setRegistering ] = useState( false );
 	const effectivePolicyItems = policyItems || [
-		'Only built-in platform authenticators with direct attestation are accepted.',
-		'Current support is limited to Windows Hello hardware or VBS authenticators and approved Android platform authenticators.',
+		'Only built-in platform authenticators with verifiable direct attestation are accepted.',
+		'Apple launch support is Safari-first on managed iPhone, iPad, and Mac devices. Chrome on macOS and cross-device QR enrollment are deferred.',
+		'Attestation format "none" is treated as non-verifiable and is rejected for managed enrollment.',
 		requireDeviceBound
 			? 'Backup-eligible synced passkeys are rejected when strict device-bound mode is enabled for this tenant.'
-			: 'Backup-eligible synced passkeys are permitted only when they also satisfy the current attestation trust bundle.',
+			: 'Backup-eligible synced passkeys remain subject to the current attestation trust bundle and launch browser support policy.',
 	];
 
 	const registerPasskey = useCallback( async () => {
@@ -80,6 +81,7 @@ export default function PasskeySection( {
 			const publicKey = {
 				...options,
 				challenge: base64urlToBuffer( options.challenge ),
+				hints: [ 'client-device' ],
 				user: {
 					...options.user,
 					id: base64urlToBuffer( options.user.id ),
