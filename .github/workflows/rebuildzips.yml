@@ -5,14 +5,18 @@ on:
     inputs:
       tag_name:
         description: 'Existing release tag to rebuild (example: v1.0.2)'
-        required: true
+        required: false
+        type: string
+      checkout_ref:
+        description: 'Branch, tag, or commit SHA to build when not rebuilding a tagged release (example: main or c77e168)'
+        required: false
         type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.event.inputs.tag_name || github.ref_name }}
+  group: release-${{ github.event.inputs.tag_name || github.event.inputs.checkout_ref || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -22,25 +26,30 @@ jobs:
     env:
       TAG_NAME: ''
       CHECKOUT_REF: ''
+      BUILD_LABEL: ''
       PLUGIN_SLUG: ''
       ASSET_NAME: ''
       MAIN_PLUGIN_FILE: ''
 
     steps:
-      - name: Resolve tag and checkout ref
+      - name: Resolve build source and checkout ref
         shell: bash
         run: |
           set -euo pipefail
 
           TAG_NAME="${{ github.event.inputs.tag_name }}"
           TAG_NAME="${TAG_NAME#refs/tags/}"
+          INPUT_REF="${{ github.event.inputs.checkout_ref }}"
+          INPUT_REF="$(printf '%s' "${INPUT_REF}" | tr -d '\r' | xargs || true)"
 
-          if [ -z "${TAG_NAME}" ]; then
-            echo "::error::For manual runs, provide tag_name (for example: v1.0.2)."
+          if [ -n "${TAG_NAME}" ]; then
+            CHECKOUT_REF="refs/tags/${TAG_NAME}"
+          elif [ -n "${INPUT_REF}" ]; then
+            CHECKOUT_REF="${INPUT_REF}"
+          else
+            echo "::error::Provide either tag_name for a release rebuild or checkout_ref for a branch/commit build."
             exit 1
           fi
-
-          CHECKOUT_REF="refs/tags/${TAG_NAME}"
 
           echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_ENV"
           echo "CHECKOUT_REF=${CHECKOUT_REF}" >> "$GITHUB_ENV"
@@ -76,7 +85,7 @@ jobs:
 
           echo "MAIN_PLUGIN_FILE=${MAIN_PLUGIN_FILE}" >> "$GITHUB_ENV"
 
-      - name: Set release metadata
+      - name: Set build metadata
         shell: bash
         run: |
           set -euo pipefail
@@ -99,16 +108,37 @@ jobs:
             PLUGIN_SLUG="${{ github.event.repository.name }}"
           fi
 
-          ASSET_NAME="${PLUGIN_SLUG}-${TAG_NAME}.zip"
+          RESOLVED_SHA="$(git rev-parse --short=12 HEAD)"
+
+          if [ -n "${TAG_NAME}" ]; then
+            BUILD_LABEL="${TAG_NAME}"
+            BUILD_SOURCE_KIND="tag"
+          else
+            BUILD_LABEL="$(printf '%s' "${CHECKOUT_REF}" | sed 's#^refs/heads/##; s#^refs/tags/##' | tr '/ ' '--' | tr -cd '[:alnum:]._-' )"
+            if [ -z "${BUILD_LABEL}" ]; then
+              BUILD_LABEL="${RESOLVED_SHA}"
+            fi
+            if [ "${BUILD_LABEL}" != "${RESOLVED_SHA}" ]; then
+              BUILD_LABEL="${BUILD_LABEL}-${RESOLVED_SHA}"
+            fi
+            BUILD_SOURCE_KIND="ref"
+          fi
+
+          ASSET_NAME="${PLUGIN_SLUG}-${BUILD_LABEL}.zip"
 
           echo "TAG_NAME=${TAG_NAME}"       >> "$GITHUB_ENV"
+          echo "BUILD_LABEL=${BUILD_LABEL}" >> "$GITHUB_ENV"
           echo "PLUGIN_SLUG=${PLUGIN_SLUG}" >> "$GITHUB_ENV"
           echo "ASSET_NAME=${ASSET_NAME}"   >> "$GITHUB_ENV"
 
-          echo "### Release metadata" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Build metadata" >> "$GITHUB_STEP_SUMMARY"
           echo "| Key | Value |"      >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- |"        >> "$GITHUB_STEP_SUMMARY"
-          echo "| Tag | \`${TAG_NAME}\` |"         >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source kind | \`${BUILD_SOURCE_KIND}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Checkout ref | \`${CHECKOUT_REF}\` |"     >> "$GITHUB_STEP_SUMMARY"
+          echo "| Resolved commit | \`${RESOLVED_SHA}\` |"  >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`${TAG_NAME:-n/a}\` |"             >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build label | \`${BUILD_LABEL}\` |"       >> "$GITHUB_STEP_SUMMARY"
           echo "| Slug | \`${PLUGIN_SLUG}\` |"     >> "$GITHUB_STEP_SUMMARY"
           echo "| Asset | \`${ASSET_NAME}\` |"     >> "$GITHUB_STEP_SUMMARY"
           echo "| Plugin file | \`${MAIN_PLUGIN_FILE}\` |" >> "$GITHUB_STEP_SUMMARY"
@@ -118,6 +148,7 @@ jobs:
       #           error annotations visible in the Actions UI.
       # ---------------------------------------------------------------
       - name: Validate tag and plugin version
+        if: ${{ env.TAG_NAME != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -391,6 +422,7 @@ jobs:
           sha256sum "dist/${ASSET_NAME}" > "dist/${ASSET_NAME}.sha256"
 
       - name: Upload zip to GitHub Release
+        if: ${{ env.TAG_NAME != '' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
@@ -401,3 +433,13 @@ jobs:
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload zip as workflow artifact
+        if: ${{ env.TAG_NAME == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.ASSET_NAME }}.sha256
+          if-no-files-found: error
