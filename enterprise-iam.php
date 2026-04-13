@@ -49,6 +49,10 @@ if ( ! file_exists( $autoloader ) ) {
 }
 require_once $autoloader;
 
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+	\EnterpriseAuth\Plugin\CLI\Bootstrap::register();
+}
+
 // ── Activation ──────────────────────────────────────────────────────────────
 register_activation_hook( __FILE__, array( \EnterpriseAuth\Plugin\DatabaseManager::class, 'activate' ) );
 

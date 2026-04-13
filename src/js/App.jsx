@@ -83,7 +83,7 @@ export default function App() {
 		apiFetch( {
 			path: 'enterprise-auth/v1/settings',
 			method: 'POST',
-			data: updated,
+			data: { [ key ]: value },
 		} ).then( ( data ) => {
 			setSettings( data );
 			setSaving( false );

@@ -133,7 +133,7 @@ export default function ScimSettings( { showToast, settings, saving, updateSetti
 				<select
 					className="ea-input"
 					value={ settings?.deprovision_steward_user_id ?? 0 }
-					disabled={ saving }
+					disabled={ saving || scopeMeta?.editable === false }
 					onChange={ ( event ) => updateSetting( 'deprovision_steward_user_id', parseInt( event.target.value, 10 ) ) }
 				>
 					<option value={ 0 }>

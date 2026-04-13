@@ -208,6 +208,76 @@ final class CredentialRepository {
 		return self::user_has_credential_with_status( $user_id, self::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT );
 	}
 
+	/**
+	 * Return batched passkey summaries keyed by user ID.
+	 *
+	 * @param array<int> $user_ids User IDs to summarize.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function passkey_summaries_for_users( array $user_ids ): array {
+		$user_ids = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'intval', $user_ids ),
+					static fn( int $user_id ): bool => $user_id > 0
+				)
+			)
+		);
+
+		if ( array() === $user_ids ) {
+			return array();
+		}
+
+		$summary_template = array(
+			'total' => 0,
+			'compliant' => 0,
+			'legacy_non_compliant' => 0,
+			'last_used_at' => '',
+		);
+
+		$summaries = array();
+		foreach ( $user_ids as $user_id ) {
+			$summaries[ $user_id ] = $summary_template;
+		}
+
+		global $wpdb;
+		$table        = DatabaseManager::table_name();
+		$placeholders = implode( ', ', array_fill( 0, count( $user_ids ), '%d' ) );
+		$args         = array_merge(
+			array(
+				self::COMPLIANCE_STATUS_COMPLIANT,
+				self::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT,
+			),
+			$user_ids
+		);
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT user_id, COUNT(*) AS total, SUM(CASE WHEN compliance_status = %s THEN 1 ELSE 0 END) AS compliant, SUM(CASE WHEN compliance_status = %s THEN 1 ELSE 0 END) AS legacy_non_compliant, MAX(last_used_at) AS last_used_at FROM {$table} WHERE user_id IN ({$placeholders}) GROUP BY user_id",
+				...$args
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		foreach ( $rows as $row ) {
+			$user_id = (int) ( $row['user_id'] ?? 0 );
+			if ( $user_id <= 0 ) {
+				continue;
+			}
+
+			$summaries[ $user_id ] = array(
+				'total' => (int) ( $row['total'] ?? 0 ),
+				'compliant' => (int) ( $row['compliant'] ?? 0 ),
+				'legacy_non_compliant' => (int) ( $row['legacy_non_compliant'] ?? 0 ),
+				'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
+			);
+		}
+
+		return $summaries;
+	}
+
 	public static function delete_legacy_non_compliant_for_user( int $user_id ): void {
 		global $wpdb;
 

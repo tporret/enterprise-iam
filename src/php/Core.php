@@ -37,6 +37,7 @@ final class Core {
 		// Admin UI – only in wp-admin context.
 		if ( is_admin() ) {
 			( new AdminUI() )->init();
+			( new UserAdminVisibility() )->init();
 		}
 
 		// REST API controllers.

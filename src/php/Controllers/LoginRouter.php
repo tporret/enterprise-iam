@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
+use EnterpriseAuth\Plugin\LoginRouteResolver;
 use EnterpriseAuth\Plugin\SiteMetaKeys;
 
 /**
@@ -239,69 +240,20 @@ final class LoginRouter {
 	 * @return array<string, string>
 	 */
 	private function resolve_login_outcome( string $email, string $redirect_to ): array {
-		$parts  = explode( '@', $email );
-		$domain = strtolower( $parts[1] ?? '' );
+		$result = ( new LoginRouteResolver() )->resolve( $email, get_current_blog_id(), $redirect_to );
 
-		$idp = CurrentSiteIdpManager::find_by_domain( $domain );
-		if ( ! $idp ) {
+		if ( 'sso' === ( $result['outcome'] ?? '' ) ) {
 			return array(
-				'outcome'     => 'local',
-				'email'       => $email,
-				'redirect_to' => $redirect_to,
+				'outcome' => 'sso',
+				'redirect_url' => (string) ( $result['redirect_url'] ?? '' ),
+				'redirect_to' => (string) ( $result['redirect_to'] ?? '' ),
 			);
-		}
-
-		// Even when a domain is mapped to an IdP, a WordPress account that
-		// has no SSO provider binding is a local account and must log in
-		// locally (password / passkey). This preserves break-glass admin
-		// access and any other intentionally-local accounts on SSO domains.
-		$wp_user = get_user_by( 'email', $email );
-
-		// Multisite: ignore users not on this site — they'll be JIT provisioned via SSO.
-		if ( is_multisite() && $wp_user && ! is_user_member_of_blog( $wp_user->ID, get_current_blog_id() ) ) {
-			$wp_user = null;
-		}
-
-		if ( $wp_user ) {
-			$existing_provider = get_user_meta( $wp_user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
-			if ( empty( $existing_provider ) ) {
-				return array(
-					'outcome'     => 'local',
-					'email'       => $email,
-					'redirect_to' => $redirect_to,
-				);
-			}
 		}
 
 		return array(
-			'outcome'      => 'sso',
-			'redirect_url' => $this->build_redirect_url( $idp ),
-			'redirect_to'  => $redirect_to,
-		);
-	}
-
-	/**
-	 * Build the SSO initiation redirect URL.
-	 */
-	private function build_redirect_url( array $idp ): string {
-		if ( ( $idp['protocol'] ?? '' ) === 'oidc' ) {
-			// Route to the dedicated OIDC Login Controller which handles
-			// state/nonce generation and the Authorization Code redirect.
-			return add_query_arg(
-				array(
-					'idp_id' => $idp['id'],
-				),
-				rest_url( 'enterprise-auth/v1/oidc/login' )
-			);
-		}
-
-		// SAML – redirect to our SP-initiated login endpoint which
-		// builds the AuthnRequest via the OneLogin toolkit.
-		return add_query_arg(
-			array(
-				'idp_id' => $idp['id'],
-			),
-			rest_url( 'enterprise-auth/v1/saml/login' )
+			'outcome' => 'local',
+			'email' => $email,
+			'redirect_to' => (string) ( $result['redirect_to'] ?? '' ),
 		);
 	}
 
