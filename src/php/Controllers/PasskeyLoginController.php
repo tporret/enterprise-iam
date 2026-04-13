@@ -86,7 +86,7 @@ final class PasskeyLoginController {
 			challenge: $challenge,
 			rpId: WebAuthnHelper::rp_id(),
 			allowCredentials: $allow_credentials,
-			userVerification: PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_PREFERRED,
+			userVerification: PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_REQUIRED,
 			timeout: 60000,
 		);
 

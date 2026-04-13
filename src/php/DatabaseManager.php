@@ -13,6 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class DatabaseManager {
 
+	private const SCHEMA_VERSION = 2;
+	private const SCHEMA_VERSION_OPTION = 'enterprise_auth_credentials_schema_version';
+
 	/**
 	 * Return the full table name including the WP prefix.
 	 */
@@ -41,6 +44,9 @@ final class DatabaseManager {
 			attestation_type varchar(64) NOT NULL DEFAULT 'none',
 			trust_path text NOT NULL,
 			aaguid varchar(64) NOT NULL DEFAULT '',
+			backup_eligible tinyint(1) DEFAULT NULL,
+			backup_status tinyint(1) DEFAULT NULL,
+			uv_initialized tinyint(1) DEFAULT NULL,
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY  (id),
 			UNIQUE KEY credential_id (credential_id),
@@ -49,5 +55,19 @@ final class DatabaseManager {
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
+		update_option( self::SCHEMA_VERSION_OPTION, self::SCHEMA_VERSION, false );
+	}
+
+	/**
+	 * Upgrade the credentials table when the plugin schema changes.
+	 */
+	public static function maybe_upgrade(): void {
+		$installed_version = (int) get_option( self::SCHEMA_VERSION_OPTION, 0 );
+
+		if ( $installed_version >= self::SCHEMA_VERSION ) {
+			return;
+		}
+
+		self::activate();
 	}
 }

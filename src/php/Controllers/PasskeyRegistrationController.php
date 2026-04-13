@@ -93,9 +93,9 @@ final class PasskeyRegistrationController {
 		);
 
 		$authenticator_selection = AuthenticatorSelectionCriteria::create(
-			authenticatorAttachment: null,
-			userVerification: AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED,
-			residentKey: AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_PREFERRED,
+			authenticatorAttachment: AuthenticatorSelectionCriteria::AUTHENTICATOR_ATTACHMENT_PLATFORM,
+			userVerification: AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_REQUIRED,
+			residentKey: AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_REQUIRED,
 		);
 
 		$options = PublicKeyCredentialCreationOptions::create(
@@ -104,7 +104,7 @@ final class PasskeyRegistrationController {
 			challenge: $challenge,
 			pubKeyCredParams: $pub_key_params,
 			authenticatorSelection: $authenticator_selection,
-			attestation: PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE,
+			attestation: PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_DIRECT,
 			excludeCredentials: $exclude,
 			timeout: 60000,
 		);
@@ -133,9 +133,9 @@ final class PasskeyRegistrationController {
 		delete_transient( self::transient_key( $user_id ) );
 
 		if ( ! $options_json ) {
-			return new \WP_REST_Response(
-				array( 'error' => 'Challenge expired or not found. Please try again.' ),
-				400
+			return $this->error_response(
+				'challenge_expired',
+				'Registration timed out. Start enrollment again and approve the passkey prompt within 60 seconds.'
 			);
 		}
 
@@ -155,17 +155,17 @@ final class PasskeyRegistrationController {
 			/** @var PublicKeyCredential $pkc */
 			$pkc = $serializer->deserialize( $body, PublicKeyCredential::class, 'json' );
 		} catch ( \Throwable $e ) {
-			return new \WP_REST_Response(
-				array( 'error' => 'Invalid attestation payload.' ),
-				400
+			return $this->error_response(
+				'invalid_attestation_payload',
+				'The browser returned an invalid passkey attestation payload. Try again from a current browser on a managed device.'
 			);
 		}
 
 		$response = $pkc->response;
 		if ( ! $response instanceof AuthenticatorAttestationResponse ) {
-			return new \WP_REST_Response(
-				array( 'error' => 'Expected an attestation response.' ),
-				400
+			return $this->error_response(
+				'invalid_attestation_response',
+				'The browser did not return a valid passkey attestation response.'
 			);
 		}
 
@@ -175,14 +175,15 @@ final class PasskeyRegistrationController {
 				$creation_options,
 				WebAuthnHelper::rp_id(),
 			);
+			WebAuthnHelper::enforce_attestation_policy( $credential_source );
 		} catch ( \Throwable $e ) {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 				error_log( 'Enterprise IAM – Passkey registration error: ' . $e->getMessage() );
 			}
-			return new \WP_REST_Response(
-				array( 'error' => 'Passkey registration failed. Please try again.' ),
-				400
+			return $this->error_response(
+				'unsupported_authenticator',
+				$this->registration_error_message( $e )
 			);
 		}
 
@@ -209,5 +210,33 @@ final class PasskeyRegistrationController {
 		}
 
 		return 'ea_' . get_current_blog_id() . '_' . $key;
+	}
+
+	private function error_response( string $code, string $message ): \WP_REST_Response {
+		return new \WP_REST_Response(
+			array(
+				'code'  => $code,
+				'error' => $message,
+			),
+			400
+		);
+	}
+
+	private function registration_error_message( \Throwable $error ): string {
+		$message = $error->getMessage();
+
+		if (
+			str_contains( $message, 'certificate trust path' )
+			|| str_contains( $message, 'direct certificate-backed attestation' )
+			|| str_contains( $message, 'pinned authenticator identity' )
+		) {
+			return 'This passkey does not provide the enterprise attestation required for enrollment. Use a built-in platform authenticator on a managed device, not a roaming key or a legacy self-attested passkey.';
+		}
+
+		if ( str_contains( $message, 'local trust bundle' ) ) {
+			return 'This platform authenticator is not in the current enterprise trust bundle. Enrollment is currently limited to Windows Hello hardware or VBS authenticators and approved Android platform authenticators.';
+		}
+
+		return 'Passkey registration failed because the authenticator did not meet the current enterprise policy. Review the passkey requirements on this page and try again from a supported managed device.';
 	}
 }

@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 use Symfony\Component\Uid\Uuid;
 use Webauthn\PublicKeyCredentialSource;
 use Webauthn\TrustPath\EmptyTrustPath;
+use Webauthn\TrustPath\TrustPath;
 
 /**
  * Repository that stores / loads PublicKeyCredentialSource objects
@@ -74,6 +75,7 @@ final class CredentialRepository {
 		global $wpdb;
 
 		$table = DatabaseManager::table_name();
+		$trust_path = self::serialize_trust_path( $source->trustPath );
 
 		// Accessing third-party object properties keeps their upstream names.
 		// phpcs:disable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
@@ -88,8 +90,11 @@ final class CredentialRepository {
 				'sign_count'       => $source->counter,
 				'transports'       => wp_json_encode( $source->transports ),
 				'attestation_type' => $source->attestationType,
-				'trust_path'       => wp_json_encode( array() ),
+				'trust_path'       => $trust_path,
 				'aaguid'           => $source->aaguid->toRfc4122(),
+				'backup_eligible'  => self::bool_to_db_value( $source->backupEligible ),
+				'backup_status'    => self::bool_to_db_value( $source->backupStatus ),
+				'uv_initialized'   => self::bool_to_db_value( $source->uvInitialized ),
 				'created_at'       => current_time( 'mysql', true ),
 			)
 		);
@@ -133,12 +138,66 @@ final class CredentialRepository {
 			'public-key',
 			$transports,
 			$row['attestation_type'] ?? 'none',
-			new EmptyTrustPath(),
+			self::deserialize_trust_path( $row['trust_path'] ?? null ),
 			$aaguid,
 			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 			base64_decode( $row['public_key'] ),
 			hash( 'sha256', (string) $row['user_id'], true ),
 			(int) $row['sign_count'],
+			null,
+			self::db_value_to_bool( $row['backup_eligible'] ?? null ),
+			self::db_value_to_bool( $row['backup_status'] ?? null ),
+			self::db_value_to_bool( $row['uv_initialized'] ?? null ),
 		);
+	}
+
+	private static function serialize_trust_path( TrustPath $trust_path ): string {
+		try {
+			$normalized = WebAuthnHelper::serializer()->normalize( $trust_path );
+		} catch ( \Throwable ) {
+			$normalized = array();
+		}
+
+		$json = wp_json_encode( $normalized );
+
+		return false === $json ? '[]' : $json;
+	}
+
+	private static function deserialize_trust_path( ?string $trust_path_json ): TrustPath {
+		if ( empty( $trust_path_json ) ) {
+			return EmptyTrustPath::create();
+		}
+
+		$trust_path = json_decode( $trust_path_json, true );
+		if ( ! is_array( $trust_path ) ) {
+			return EmptyTrustPath::create();
+		}
+
+		try {
+			$deserialized = WebAuthnHelper::serializer()->denormalize( $trust_path, TrustPath::class );
+			if ( $deserialized instanceof TrustPath ) {
+				return $deserialized;
+			}
+		} catch ( \Throwable ) {
+			return EmptyTrustPath::create();
+		}
+
+		return EmptyTrustPath::create();
+	}
+
+	private static function bool_to_db_value( ?bool $value ): ?int {
+		if ( null === $value ) {
+			return null;
+		}
+
+		return $value ? 1 : 0;
+	}
+
+	private static function db_value_to_bool( mixed $value ): ?bool {
+		if ( null === $value || '' === $value ) {
+			return null;
+		}
+
+		return 1 === (int) $value;
 	}
 }

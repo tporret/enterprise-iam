@@ -235,6 +235,36 @@
 	align-items: center;
 }
 
+.ea-passkey-policy {
+	margin-top: 14px;
+	padding: 12px 14px;
+	border: 1px solid #dbe4ee;
+	border-radius: 10px;
+	background: #f8fafc;
+	max-width: 720px;
+}
+
+.ea-passkey-policy__heading {
+	margin: 0 0 8px;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #475569;
+}
+
+.ea-passkey-policy__list {
+	margin: 0;
+	padding-left: 18px;
+	color: #334155;
+	font-size: 13px;
+	line-height: 1.55;
+}
+
+.ea-passkey-policy__list li + li {
+	margin-top: 6px;
+}
+
 /* ── Tab Navigation ──────────────────────────────────────────────────────── */
 .ea-tabs {
 	display: flex;

@@ -1,6 +1,18 @@
 import { useState, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
+function getRegistrationErrorMessage( err ) {
+	if ( err?.data?.error ) {
+		return err.data.error;
+	}
+
+	if ( err?.message ) {
+		return err.message;
+	}
+
+	return 'Passkey registration failed. Review the enrollment requirements and try again.';
+}
+
 /**
  * Encode an ArrayBuffer to a Base64URL string.
  */
@@ -35,7 +47,10 @@ export default function PasskeySection( { showToast } ) {
 
 	const registerPasskey = useCallback( async () => {
 		if ( ! window.PublicKeyCredential ) {
-			showToast( 'WebAuthn is not supported by this browser.', 'error' );
+			showToast(
+				'This browser cannot perform managed passkey enrollment.',
+				'error'
+			);
 			return;
 		}
 
@@ -100,18 +115,15 @@ export default function PasskeySection( { showToast } ) {
 			} );
 
 			if ( result.success ) {
-				showToast( 'Passkey registered successfully!' );
+				showToast( 'Managed passkey registered successfully!' );
 			} else {
 				showToast( result.error || 'Registration failed.', 'error' );
 			}
 		} catch ( err ) {
 			if ( err.name === 'NotAllowedError' ) {
-				showToast( 'Passkey registration was cancelled.', 'error' );
+				showToast( 'Managed passkey enrollment was cancelled.', 'error' );
 			} else {
-				showToast(
-					'Passkey registration failed: ' + err.message,
-					'error'
-				);
+				showToast( getRegistrationErrorMessage( err ), 'error' );
 			}
 		} finally {
 			setRegistering( false );
@@ -122,11 +134,21 @@ export default function PasskeySection( { showToast } ) {
 		<div className="ea-card">
 			<div className="ea-card__body ea-card__body--passkey">
 				<div className="ea-card__text">
-					<h2 className="ea-card__title">Passkey Authentication</h2>
+					<h2 className="ea-card__title">Managed Passkey Enrollment</h2>
 					<p className="ea-card__desc">
-						Register a passkey to enable passwordless login using
-						biometrics, security keys, or your device PIN.
+						Register a platform passkey that meets the current enterprise
+						attestation policy for passwordless administrator access.
 					</p>
+					<div className="ea-passkey-policy" role="note">
+						<p className="ea-passkey-policy__heading">
+							Current enrollment policy
+						</p>
+						<ul className="ea-passkey-policy__list">
+							<li>Only built-in platform authenticators with direct attestation are accepted.</li>
+							<li>Current support is limited to Windows Hello hardware or VBS authenticators and approved Android platform authenticators.</li>
+							<li>Roaming security keys, legacy self-attested passkeys, and unsupported platform authenticators are rejected.</li>
+						</ul>
+					</div>
 				</div>
 				<button
 					type="button"

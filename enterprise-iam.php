@@ -53,4 +53,5 @@ require_once $autoloader;
 register_activation_hook( __FILE__, array( \EnterpriseAuth\Plugin\DatabaseManager::class, 'activate' ) );
 
 // ── Boot ────────────────────────────────────────────────────────────────────
+( \EnterpriseAuth\Plugin\DatabaseManager::class )::maybe_upgrade();
 ( new \EnterpriseAuth\Plugin\Core() )->init();
