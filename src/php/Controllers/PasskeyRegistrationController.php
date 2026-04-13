@@ -51,10 +51,18 @@ final class PasskeyRegistrationController {
 	}
 
 	/**
-	 * Must be logged-in and have manage_options capability.
+	 * Must be logged-in and either be an admin or be in a required step-up flow.
 	 */
 	public function check_permission(): bool {
-		return current_user_can( 'manage_options' );
+		if ( ! is_user_logged_in() ) {
+			return false;
+		}
+
+		if ( current_user_can( 'manage_options' ) ) {
+			return true;
+		}
+
+		return \EnterpriseAuth\Plugin\PasskeyPolicy::is_step_up_required_for_user( get_current_user_id() );
 	}
 
 	/**
@@ -176,6 +184,7 @@ final class PasskeyRegistrationController {
 				WebAuthnHelper::rp_id(),
 			);
 			WebAuthnHelper::enforce_attestation_policy( $credential_source );
+			\EnterpriseAuth\Plugin\PasskeyPolicy::enforce_device_bound_registration_policy( $credential_source );
 		} catch ( \Throwable $e ) {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
@@ -188,12 +197,20 @@ final class PasskeyRegistrationController {
 		}
 
 		// Persist the credential.
-		CredentialRepository::save( $credential_source, $user_id );
+		CredentialRepository::save(
+			$credential_source,
+			$user_id,
+			\EnterpriseAuth\Plugin\PasskeyPolicy::compliance_status_for_new_credential( $credential_source ),
+			\EnterpriseAuth\Plugin\PasskeyPolicy::current_registration_origin()
+		);
+
+		$redirect_to = \EnterpriseAuth\Plugin\PasskeyPolicy::complete_step_up_if_satisfied( $user_id );
 
 		return new \WP_REST_Response(
 			array(
 				'success' => true,
 				'message' => 'Passkey registered.',
+				'redirect_to' => $redirect_to,
 			),
 			200
 		);
@@ -235,6 +252,10 @@ final class PasskeyRegistrationController {
 
 		if ( str_contains( $message, 'local trust bundle' ) ) {
 			return 'This platform authenticator is not in the current enterprise trust bundle. Enrollment is currently limited to Windows Hello hardware or VBS authenticators and approved Android platform authenticators.';
+		}
+
+		if ( str_contains( $message, 'device-bound passkey' ) || str_contains( $message, 'Synced backup-eligible passkeys' ) ) {
+			return 'Your organization requires a device-bound passkey on this managed device. Synced passkeys are not permitted.';
 		}
 
 		return 'Passkey registration failed because the authenticator did not meet the current enterprise policy. Review the passkey requirements on this page and try again from a supported managed device.';

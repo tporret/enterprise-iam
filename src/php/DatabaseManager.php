@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class DatabaseManager {
 
-	private const SCHEMA_VERSION = 2;
+	private const SCHEMA_VERSION = 3;
 	private const SCHEMA_VERSION_OPTION = 'enterprise_auth_credentials_schema_version';
 
 	/**
@@ -47,7 +47,10 @@ final class DatabaseManager {
 			backup_eligible tinyint(1) DEFAULT NULL,
 			backup_status tinyint(1) DEFAULT NULL,
 			uv_initialized tinyint(1) DEFAULT NULL,
+			compliance_status varchar(32) NOT NULL DEFAULT 'compliant',
+			registration_origin varchar(255) NOT NULL DEFAULT '',
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_used_at datetime DEFAULT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY credential_id (credential_id),
 			KEY user_id (user_id)
@@ -55,6 +58,12 @@ final class DatabaseManager {
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
+
+		$origin = PasskeyPolicy::current_registration_origin();
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET compliance_status = %s WHERE compliance_status = '' OR compliance_status IS NULL", PasskeyPolicy::COMPLIANCE_STATUS_COMPLIANT ) );
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET registration_origin = %s WHERE registration_origin = '' OR registration_origin IS NULL", $origin ) );
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		update_option( self::SCHEMA_VERSION_OPTION, self::SCHEMA_VERSION, false );
 	}
 

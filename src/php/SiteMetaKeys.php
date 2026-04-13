@@ -30,6 +30,7 @@ final class SiteMetaKeys {
 	public const SSO_LOGIN_AT    = '_enterprise_auth_sso_login_at';
 	public const SESSION_EXPIRES = '_enterprise_auth_session_expires';
 	public const OIDC_ID_TOKEN   = '_enterprise_auth_oidc_id_token';
+	public const PASSKEY_STEP_UP_REQUIRED = '_enterprise_auth_passkey_stepup_required';
 
 	// ── SCIM meta keys ──────────────────────────────────────────────────
 	public const SCIM_ID         = 'enterprise_iam_scim_id';
@@ -49,6 +50,7 @@ final class SiteMetaKeys {
 		self::SSO_LOGIN_AT    => 'sso_login_at',
 		self::SESSION_EXPIRES => 'session_expires',
 		self::OIDC_ID_TOKEN   => 'oidc_id_token',
+		self::PASSKEY_STEP_UP_REQUIRED => 'passkey_stepup_required',
 		self::SCIM_ID         => 'scim_id',
 		self::SCIM_SUSPENDED  => 'scim_suspended',
 	);

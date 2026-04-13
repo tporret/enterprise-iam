@@ -72,6 +72,8 @@ final class Core {
 
 		// Security headers on frontend.
 		add_action( 'send_headers', array( $this, 'send_security_headers' ) );
+		add_action( 'admin_init', array( $this, 'enforce_passkey_step_up_gate' ) );
+		add_action( 'template_redirect', array( $this, 'enforce_passkey_step_up_gate' ) );
 
 		// Prevent CDN / proxy caching of dynamic REST responses.
 		add_filter( 'rest_post_dispatch', array( $this, 'add_rest_cache_headers' ), 10, 3 );
@@ -467,5 +469,33 @@ final class Core {
 		}
 
 		return 'enterprise_auth_last_idp_' . get_current_blog_id();
+	}
+
+	/**
+	 * Redirect users in an active step-up flow to the self-service upgrade page.
+	 */
+	public function enforce_passkey_step_up_gate(): void {
+		if ( ! is_user_logged_in() ) {
+			return;
+		}
+
+		if ( ! PasskeyPolicy::is_step_up_required_for_user( get_current_user_id() ) ) {
+			return;
+		}
+
+		if ( ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || wp_doing_ajax() || wp_doing_cron() ) {
+			return;
+		}
+
+		if ( is_admin() ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$current_page = sanitize_key( $_GET['page'] ?? '' );
+			if ( AdminUI::step_up_page_slug() === $current_page ) {
+				return;
+			}
+		}
+
+		wp_safe_redirect( AdminUI::step_up_url() );
+		exit;
 	}
 }

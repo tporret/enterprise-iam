@@ -42,6 +42,11 @@ final class PasskeyLoginController {
 							'required'          => false,
 							'sanitize_callback' => 'sanitize_email',
 						),
+						'redirect_to' => array(
+							'type'              => 'string',
+							'required'          => false,
+							'sanitize_callback' => 'esc_url_raw',
+						),
 					),
 				),
 				array(
@@ -61,6 +66,7 @@ final class PasskeyLoginController {
 	 */
 	public function get_request_options( \WP_REST_Request $request ): \WP_REST_Response {
 		$email     = $request->get_param( 'email' );
+		$redirect_to = $this->validated_redirect_target( (string) $request->get_param( 'redirect_to' ) );
 		$challenge = WebAuthnHelper::generate_challenge();
 
 		$allow_credentials = array();
@@ -98,6 +104,7 @@ final class PasskeyLoginController {
 				array(
 					'options' => WebAuthnHelper::serializer()->serialize( $options, 'json' ),
 					'user_id' => $user_id,
+					'redirect_to' => $redirect_to,
 				)
 			),
 			self::CHALLENGE_TTL
@@ -157,6 +164,7 @@ final class PasskeyLoginController {
 		// Look up the stored credential by credential ID.
 		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 		$credential_source = CredentialRepository::find_by_credential_id( $pkc->rawId );
+		$credential_metadata = CredentialRepository::find_metadata_by_credential_id( $pkc->rawId );
 		if ( ! $credential_source ) {
 			return new \WP_REST_Response( array( 'error' => 'Credential not found.' ), 400 );
 		}
@@ -185,7 +193,7 @@ final class PasskeyLoginController {
 		}
 
 		// Update sign count for clone detection.
-		CredentialRepository::update_counter(
+		CredentialRepository::record_successful_assertion(
 			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 			$updated_source->publicKeyCredentialId,
 			$updated_source->counter
@@ -203,10 +211,24 @@ final class PasskeyLoginController {
 		wp_set_auth_cookie( $wp_user_id, false, is_ssl() );
 		do_action( 'wp_login', get_userdata( $wp_user_id )->user_login, get_userdata( $wp_user_id ) );
 
+		$stored_redirect_to = $this->validated_redirect_target( (string) ( $stored['redirect_to'] ?? '' ) );
+		$redirect_to = '' !== $stored_redirect_to ? $stored_redirect_to : admin_url();
+
+		if ( CredentialRepository::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT === ( $credential_metadata['compliance_status'] ?? '' ) ) {
+			if ( \EnterpriseAuth\Plugin\PasskeyPolicy::requires_device_bound_authenticators() ) {
+				if ( CredentialRepository::user_has_compliant_credential( $wp_user_id ) ) {
+					CredentialRepository::delete_legacy_non_compliant_for_user( $wp_user_id );
+				} else {
+					\EnterpriseAuth\Plugin\PasskeyPolicy::activate_step_up( $wp_user_id, $redirect_to );
+					$redirect_to = \EnterpriseAuth\Plugin\PasskeyPolicy::step_up_url();
+				}
+			}
+		}
+
 		return new \WP_REST_Response(
 			array(
 				'success'     => true,
-				'redirect_to' => admin_url(),
+				'redirect_to' => $redirect_to,
 			),
 			200
 		);
@@ -248,5 +270,15 @@ final class PasskeyLoginController {
 		}
 
 		return 'ea_' . get_current_blog_id() . '_' . $key;
+	}
+
+	private function validated_redirect_target( string $redirect_to ): string {
+		$redirect_to = trim( $redirect_to );
+
+		if ( '' === $redirect_to ) {
+			return '';
+		}
+
+		return wp_validate_redirect( $redirect_to, '' );
 	}
 }

@@ -296,7 +296,18 @@ import './passkey-login.css';
 			setStatus( 'ea-passkey-status', 'Waiting for passkey…', false );
 
 			var email = ( userLogin && userLogin.value ) || '';
-			var queryParams = email ? '?email=' + encodeURIComponent( email ) : '';
+			var params = [];
+			var redirectTo = getQueryParam( 'redirect_to' );
+
+			if ( email ) {
+				params.push( 'email=' + encodeURIComponent( email ) );
+			}
+
+			if ( redirectTo ) {
+				params.push( 'redirect_to=' + encodeURIComponent( redirectTo ) );
+			}
+
+			var queryParams = params.length ? '?' + params.join( '&' ) : '';
 
 			doFetch( 'passkeys/login' + queryParams )
 				.then( function ( options ) {
@@ -383,6 +394,11 @@ import './passkey-login.css';
 					btn.disabled = false;
 				} );
 		} );
+	}
+
+	function getQueryParam( key ) {
+		var params = new URLSearchParams( window.location.search );
+		return params.get( key ) || '';
 	}
 
 	// ── Boot ────────────────────────────────────────────────────────────

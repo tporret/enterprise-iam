@@ -60,6 +60,7 @@ final class SettingsController {
 	private const DEFAULTS = array(
 		'lockdown_mode'   => true,
 		'app_passwords'   => false,
+		'require_device_bound_authenticators' => false,
 		'role_ceiling'    => 'editor',
 		'session_timeout' => 8,
 		'deprovision_steward_user_id' => 0,
@@ -94,7 +95,7 @@ final class SettingsController {
 
 		// Boolean settings.
 		$sanitized = array();
-		foreach ( array( 'lockdown_mode', 'app_passwords' ) as $key ) {
+		foreach ( array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators' ) as $key ) {
 			$sanitized[ $key ] = isset( $params[ $key ] )
 				? rest_sanitize_boolean( $params[ $key ] )
 				: $current[ $key ];
@@ -122,6 +123,11 @@ final class SettingsController {
 		}
 
 		update_option( self::OPTION_KEY, $sanitized );
+
+		PasskeyPolicy::sync_device_bound_policy(
+			(bool) ( $current['require_device_bound_authenticators'] ?? self::DEFAULTS['require_device_bound_authenticators'] ),
+			(bool) $sanitized['require_device_bound_authenticators']
+		);
 
 		return new \WP_REST_Response( self::read(), 200 );
 	}
@@ -153,6 +159,7 @@ final class SettingsController {
 		return array(
 			'lockdown_mode'   => isset( $raw['lockdown_mode'] ) ? (bool) $raw['lockdown_mode'] : self::DEFAULTS['lockdown_mode'],
 			'app_passwords'   => isset( $raw['app_passwords'] ) ? (bool) $raw['app_passwords'] : self::DEFAULTS['app_passwords'],
+			'require_device_bound_authenticators' => isset( $raw['require_device_bound_authenticators'] ) ? (bool) $raw['require_device_bound_authenticators'] : self::DEFAULTS['require_device_bound_authenticators'],
 			'role_ceiling'    => $ceiling,
 			'session_timeout' => $timeout,
 			'deprovision_steward_user_id' => $steward_user_id,
@@ -194,6 +201,11 @@ final class SettingsController {
 				'sanitize_callback' => 'rest_sanitize_boolean',
 			),
 			'app_passwords' => array(
+				'type'              => 'boolean',
+				'required'          => false,
+				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
+			'require_device_bound_authenticators' => array(
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',

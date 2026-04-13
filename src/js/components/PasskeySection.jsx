@@ -42,15 +42,29 @@ function base64urlToBuffer( base64url ) {
 	return bytes.buffer;
 }
 
-export default function PasskeySection( { showToast } ) {
+export default function PasskeySection( {
+	showToast,
+	requireDeviceBound = false,
+	title = 'Managed Passkey Enrollment',
+	description = 'Register a platform passkey that meets the current enterprise attestation policy for passwordless administrator access.',
+	buttonLabel = 'Register Passkey',
+	successMessage = 'Managed passkey registered successfully!',
+	cancelledMessage = 'Managed passkey enrollment was cancelled.',
+	unsupportedMessage = 'This browser cannot perform managed passkey enrollment.',
+	policyItems,
+} ) {
 	const [ registering, setRegistering ] = useState( false );
+	const effectivePolicyItems = policyItems || [
+		'Only built-in platform authenticators with direct attestation are accepted.',
+		'Current support is limited to Windows Hello hardware or VBS authenticators and approved Android platform authenticators.',
+		requireDeviceBound
+			? 'Backup-eligible synced passkeys are rejected when strict device-bound mode is enabled for this tenant.'
+			: 'Backup-eligible synced passkeys are permitted only when they also satisfy the current attestation trust bundle.',
+	];
 
 	const registerPasskey = useCallback( async () => {
 		if ( ! window.PublicKeyCredential ) {
-			showToast(
-				'This browser cannot perform managed passkey enrollment.',
-				'error'
-			);
+			showToast( unsupportedMessage, 'error' );
 			return;
 		}
 
@@ -115,38 +129,40 @@ export default function PasskeySection( { showToast } ) {
 			} );
 
 			if ( result.success ) {
-				showToast( 'Managed passkey registered successfully!' );
+				showToast( successMessage );
+				if ( result.redirect_to ) {
+					window.location.href = result.redirect_to;
+				}
 			} else {
 				showToast( result.error || 'Registration failed.', 'error' );
 			}
 		} catch ( err ) {
 			if ( err.name === 'NotAllowedError' ) {
-				showToast( 'Managed passkey enrollment was cancelled.', 'error' );
+				showToast( cancelledMessage, 'error' );
 			} else {
 				showToast( getRegistrationErrorMessage( err ), 'error' );
 			}
 		} finally {
 			setRegistering( false );
 		}
-	}, [ showToast ] );
+	}, [ cancelledMessage, showToast, successMessage, unsupportedMessage ] );
 
 	return (
 		<div className="ea-card">
 			<div className="ea-card__body ea-card__body--passkey">
 				<div className="ea-card__text">
-					<h2 className="ea-card__title">Managed Passkey Enrollment</h2>
+					<h2 className="ea-card__title">{ title }</h2>
 					<p className="ea-card__desc">
-						Register a platform passkey that meets the current enterprise
-						attestation policy for passwordless administrator access.
+						{ description }
 					</p>
 					<div className="ea-passkey-policy" role="note">
 						<p className="ea-passkey-policy__heading">
 							Current enrollment policy
 						</p>
 						<ul className="ea-passkey-policy__list">
-							<li>Only built-in platform authenticators with direct attestation are accepted.</li>
-							<li>Current support is limited to Windows Hello hardware or VBS authenticators and approved Android platform authenticators.</li>
-							<li>Roaming security keys, legacy self-attested passkeys, and unsupported platform authenticators are rejected.</li>
+							{ effectivePolicyItems.map( ( item ) => (
+								<li key={ item }>{ item }</li>
+							) ) }
 						</ul>
 					</div>
 				</div>
@@ -156,7 +172,7 @@ export default function PasskeySection( { showToast } ) {
 					onClick={ registerPasskey }
 					disabled={ registering }
 				>
-					{ registering ? 'Registering…' : 'Register Passkey' }
+					{ registering ? 'Registering…' : buttonLabel }
 				</button>
 			</div>
 		</div>

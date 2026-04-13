@@ -19,6 +19,9 @@ use Webauthn\TrustPath\TrustPath;
  */
 final class CredentialRepository {
 
+	public const COMPLIANCE_STATUS_COMPLIANT = 'compliant';
+	public const COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT = 'legacy_non_compliant';
+
 	/**
 	 * Find a single credential by its binary credential ID.
 	 */
@@ -71,7 +74,7 @@ final class CredentialRepository {
 	/**
 	 * Persist a new credential after successful registration.
 	 */
-	public static function save( PublicKeyCredentialSource $source, int $user_id ): void {
+	public static function save( PublicKeyCredentialSource $source, int $user_id, string $compliance_status = self::COMPLIANCE_STATUS_COMPLIANT, string $registration_origin = '' ): void {
 		global $wpdb;
 
 		$table = DatabaseManager::table_name();
@@ -95,7 +98,10 @@ final class CredentialRepository {
 				'backup_eligible'  => self::bool_to_db_value( $source->backupEligible ),
 				'backup_status'    => self::bool_to_db_value( $source->backupStatus ),
 				'uv_initialized'   => self::bool_to_db_value( $source->uvInitialized ),
+				'compliance_status' => $compliance_status,
+				'registration_origin' => $registration_origin,
 				'created_at'       => current_time( 'mysql', true ),
+				'last_used_at'     => null,
 			)
 		);
 		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
@@ -117,6 +123,105 @@ final class CredentialRepository {
 			array( '%d' ),
 			array( '%s' )
 		);
+	}
+
+	/**
+	 * Update sign count and last-used time after a successful assertion.
+	 */
+	public static function record_successful_assertion( string $credential_id_binary, int $new_count ): void {
+		global $wpdb;
+
+		$table = DatabaseManager::table_name();
+
+		$wpdb->update(
+			$table,
+			array(
+				'sign_count'   => $new_count,
+				'last_used_at' => current_time( 'mysql', true ),
+			),
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+			array( 'credential_id' => base64_encode( $credential_id_binary ) ),
+			array( '%d', '%s' ),
+			array( '%s' )
+		);
+	}
+
+	/**
+	 * Retrieve the stored compliance and audit metadata for a credential.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	public static function find_metadata_by_credential_id( string $credential_id_binary ): ?array {
+		$row = self::find_row_by_credential_id( $credential_id_binary );
+
+		if ( ! $row ) {
+			return null;
+		}
+
+		return array(
+			'user_id' => (int) $row['user_id'],
+			'compliance_status' => (string) ( $row['compliance_status'] ?? self::COMPLIANCE_STATUS_COMPLIANT ),
+			'backup_eligible' => self::db_value_to_bool( $row['backup_eligible'] ?? null ),
+			'backup_status' => self::db_value_to_bool( $row['backup_status'] ?? null ),
+			'registration_origin' => (string) ( $row['registration_origin'] ?? '' ),
+			'created_at' => (string) ( $row['created_at'] ?? '' ),
+			'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
+		);
+	}
+
+	public static function mark_backup_eligible_credentials_legacy_non_compliant(): void {
+		global $wpdb;
+
+		$table = DatabaseManager::table_name();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET compliance_status = %s WHERE backup_eligible = 1",
+				self::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	public static function restore_legacy_non_compliant_credentials(): void {
+		global $wpdb;
+
+		$table = DatabaseManager::table_name();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET compliance_status = %s WHERE compliance_status = %s",
+				self::COMPLIANCE_STATUS_COMPLIANT,
+				self::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	public static function user_has_compliant_credential( int $user_id ): bool {
+		return self::user_has_credential_with_status( $user_id, self::COMPLIANCE_STATUS_COMPLIANT );
+	}
+
+	public static function user_has_legacy_non_compliant_credential( int $user_id ): bool {
+		return self::user_has_credential_with_status( $user_id, self::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT );
+	}
+
+	public static function delete_legacy_non_compliant_for_user( int $user_id ): void {
+		global $wpdb;
+
+		$table = DatabaseManager::table_name();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$table} WHERE user_id = %d AND compliance_status = %s",
+				$user_id,
+				self::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	/**
@@ -149,6 +254,40 @@ final class CredentialRepository {
 			self::db_value_to_bool( $row['backup_status'] ?? null ),
 			self::db_value_to_bool( $row['uv_initialized'] ?? null ),
 		);
+	}
+
+	/**
+	 * @return array<string, mixed>|null
+	 */
+	private static function find_row_by_credential_id( string $credential_id_binary ): ?array {
+		global $wpdb;
+
+		$table = DatabaseManager::table_name();
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		$b64   = base64_encode( $credential_id_binary );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$row = $wpdb->get_row(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->prepare( "SELECT * FROM {$table} WHERE credential_id = %s LIMIT 1", $b64 ),
+			ARRAY_A
+		);
+
+		return $row ?: null;
+	}
+
+	private static function user_has_credential_with_status( int $user_id, string $status ): bool {
+		global $wpdb;
+
+		$table = DatabaseManager::table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$count = (int) $wpdb->get_var(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->prepare( "SELECT COUNT(1) FROM {$table} WHERE user_id = %d AND compliance_status = %s", $user_id, $status )
+		);
+
+		return $count > 0;
 	}
 
 	private static function serialize_trust_path( TrustPath $trust_path ): string {

@@ -12,6 +12,7 @@ export default function App() {
 	const [ settings, setSettings ] = useState( {
 		lockdown_mode: true,
 		app_passwords: false,
+		require_device_bound_authenticators: false,
 		role_ceiling: 'editor',
 		session_timeout: 8,
 		deprovision_steward_user_id: 0,
@@ -116,6 +117,13 @@ export default function App() {
 							onChange={ ( val ) => updateSetting( 'lockdown_mode', val ) }
 						/>
 						<ToggleCard
+							title="Require Device-Bound Authenticators"
+							description="Reject backup-eligible synced passkeys during enrollment. Existing non-compliant passkeys enter a controlled step-up migration path when this is enabled."
+							checked={ settings.require_device_bound_authenticators }
+							disabled={ saving }
+							onChange={ ( val ) => updateSetting( 'require_device_bound_authenticators', val ) }
+						/>
+						<ToggleCard
 							title="Application Passwords"
 							description="Allow non-administrator users to create Application Passwords. When off, only admins may use them."
 							checked={ settings.app_passwords }
@@ -158,7 +166,10 @@ export default function App() {
 								<option value={ 24 }>24 hours</option>
 							</select>
 						</div>
-						<PasskeySection showToast={ showToast } />
+						<PasskeySection
+							showToast={ showToast }
+							requireDeviceBound={ settings.require_device_bound_authenticators }
+						/>
 					</section>
 				) }
 

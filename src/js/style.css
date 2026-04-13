@@ -265,6 +265,38 @@
 	margin-top: 6px;
 }
 
+.ea-stepup {
+	max-width: 760px;
+	margin: 32px auto;
+	padding: 0 16px;
+}
+
+.ea-stepup__meta {
+	margin-top: 16px;
+	font-size: 13px;
+	color: #64748b;
+	line-height: 1.6;
+}
+
+.ea-stepup__actions {
+	margin-top: 18px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 16px;
+	flex-wrap: wrap;
+}
+
+.ea-stepup__link {
+	color: #2563eb;
+	text-decoration: none;
+	font-weight: 600;
+}
+
+.ea-stepup__link:hover {
+	text-decoration: underline;
+}
+
 /* ── Tab Navigation ──────────────────────────────────────────────────────── */
 .ea-tabs {
 	display: flex;
