@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.3
-Stable tag: 1.5.3
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,6 +18,10 @@ Key features:
 
 * Passkey authentication (WebAuthn) for passwordless login
 * Tenant-scoped device-bound passkey policy that can reject backup-eligible synced credentials during enrollment
+* Network-managed Multisite defaults with explicit site override policy controls
+* Site-scoped private content login gating for private posts and pages
+* User IAM visibility on WordPress Users and Profile screens
+* Read-only WP-CLI operator surface under `wp enterprise-auth ...`
 * Enterprise SSO with SAML 2.0 Service Provider flow
 * Enterprise SSO with OpenID Connect (Authorization Code flow)
 * Domain-based login routing (email domain -> provider)
@@ -37,6 +41,8 @@ Key features:
 * SCIM Provisioning admin tab to view SCIM Base URL, generate one-time tokens, and configure a site-level Deprovision Steward
 * Existing network users can be attached to the current site during Multisite SCIM create instead of duplicated globally
 * Custom attribute mapping per IdP — override the default claim keys for email, first name, and last name with an admin UI toggle and one-click presets for Azure AD (SAML + OIDC), Shibboleth/InCommon OIDs, and Standard/Okta
+* Effective settings resolution with Network Admin defaults, inheritance metadata, and site override enforcement
+* Private-content gate preserves `redirect_to` through local, passkey, and SSO login flows
 * SSO-only account lockdown — password login and password reset disabled for all SSO-managed users
 * Email change protection — SSO-managed users cannot change their email address
 * Session expiry auto re-authentication — expired sessions redirect transparently back to the user's IdP
@@ -106,6 +112,26 @@ When enabled, new passkey enrollment rejects backup-eligible synced credentials.
 
 The bundled local trust policy currently covers Windows Hello Hardware, Windows Hello VBS, and the approved Android platform authenticator metadata shipped with the plugin. Apple enterprise passkey attestation is not bundled yet.
 
+= Does the plugin support Multisite network policy controls? =
+
+Yes. In network-activated Multisite deployments, super admins can define network defaults and choose which settings site admins may override locally. Site admins see effective values with scope metadata so the dashboard matches actual runtime behavior.
+
+= Can I require login for private content without forcing authentication for the whole site? =
+
+Yes. The plugin includes an optional private-content gate for private posts and pages. Logged-out visitors are redirected to the current site's login URL and returned to the original destination after authentication. Public content remains public.
+
+= Does the plugin force whole-site authentication? =
+
+No. The current access-gating feature is intentionally limited to private posts and pages.
+
+= Is there a WP-CLI surface for operators? =
+
+Yes. The plugin exposes read-only commands under `wp enterprise-auth` for inspecting providers, site posture, effective settings, routing decisions, user identity state, passkey posture, and SCIM status. In Multisite, site-local commands use explicit scope via `--blog-id=<id>`.
+
+= Can admins inspect IAM posture from wp-admin? =
+
+Yes. The Users list and Profile/Edit User screens include read-only Enterprise Auth visibility for identity source, provider binding, passkey summary, and suspension posture, scoped to the current site in Multisite.
+
 = How does SCIM deprovisioning work on Multisite? =
 
 `DELETE /Users/{id}` removes the user from the current site and clears that site's identity bindings. `DELETE /Users/{id}?scope=network` preflights every site membership, applies per-site reassignment policy, and then removes the user from every site if the full plan is safe.
@@ -145,6 +171,14 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Auditability: `ea_identity_event` hooks fire on successful SSO login and on SCIM lifecycle events, with delete events carrying reassignment and request metadata where available.
 
 == Changelog ==
+
+= 1.6.0 =
+* Feature: added Multisite network policy controls with effective settings resolution, scope metadata, and site override enforcement
+* Feature: added a private-content login gate for private posts and pages with destination-preserving redirects
+* Feature: added read-only IAM visibility to WordPress Users and Profile screens
+* Feature: added a read-only WP-CLI operator surface under `wp enterprise-auth`
+* Test: expanded Playwright coverage for multisite policy behavior, wp-admin IAM visibility, and private-content access gating
+* Docs: refreshed project documentation for network governance, operator workflows, and access-gating scope
 
 = 1.5.3 =
 * Fix: release packaging now preserves runtime vendor dependencies required by passkey and federation flows
@@ -223,6 +257,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Group and wildcard role mapping
 
 == Upgrade Notice ==
+
+= 1.6.0 =
+Adds Multisite governance controls, private-content access gating for private posts and pages, wp-admin IAM visibility, and a read-only WP-CLI operator surface. Review Network Admin defaults and per-site private-content gate settings after upgrade. No database schema changes.
 
 = 1.5.3 =
 Packaging and release hardening update. Runtime vendor dependencies needed by passkeys are preserved in release zips, and the release workflow now verifies packaged artifacts before upload.

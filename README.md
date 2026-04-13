@@ -10,6 +10,10 @@ It combines:
 - OpenID Connect (OIDC) support
 - Domain-based SSO routing
 - Just-In-Time user provisioning
+- Network-managed Multisite defaults with per-setting site override policy
+- Site-scoped private content login gating for private posts and pages
+- User IAM visibility on WordPress Users and Profile screens
+- Read-only WP-CLI operator commands for providers, sites, users, routing, passkeys, settings, and SCIM posture
 - Multisite-aware tenant isolation for identity metadata, re-auth cookies, and protocol transient state
 - Group-to-role mapping with wildcard fallback
 - Break-glass admin isolation
@@ -33,6 +37,10 @@ It combines:
 - Identity-first login UX on `wp-login.php` with correct local vs SSO routing
 - Passwordless login with passkeys
 - Attestation-gated passkey enrollment with optional strict device-bound mode and automatic step-up migration for legacy synced credentials
+- Network control plane for Multisite defaults, inherited settings, and site override enforcement
+- Private content login gate that preserves `redirect_to` without forcing whole-site authentication
+- Read-only IAM visibility in wp-admin user management screens
+- Read-only operator surface under `wp enterprise-auth ...`
 - SAML metadata endpoint and ACS flow
 - OIDC authorization and callback flow
 - Unified provisioning engine for SAML and OIDC
@@ -162,6 +170,14 @@ Current attestation scope in the local trust bundle is limited to:
 
 Apple enterprise passkey attestation is not bundled yet.
 
+### Access Gating
+
+Enterprise Auth includes an optional private-content login gate.
+
+- When enabled, logged-out visitors requesting private posts or pages are redirected to `wp-login.php` with the destination preserved in `redirect_to`.
+- Public content remains publicly reachable.
+- The plugin does not currently force authentication for the entire frontend.
+
 ### SAML
 
 - Configure IdP metadata fields in the admin UI.
@@ -193,6 +209,39 @@ On single-site installs, the plugin keeps its legacy key layout and routing beha
 - Passkey step-up requirement flags are stored in site-scoped usermeta, so a strict passkey policy on one tenant does not spill into other sites on the same network.
 - SCIM provisioning can attach an existing network user to the current site instead of creating a duplicate global account.
 - SCIM network deprovision evaluates each site independently and applies per-site reassignment policy before removing memberships.
+
+## Multisite Governance
+
+When network-activated, Enterprise Auth adds a network control plane for effective settings and operator visibility.
+
+- Super admins can define network defaults and choose which settings site admins may override locally.
+- Site admins see effective values plus scope metadata for inherited, overridden, and network-locked settings.
+- The current policy set covers lockdown mode, application passwords, device-bound passkeys, private content login gating, role ceiling, session timeout, and SCIM deprovision steward selection.
+- Runtime behavior uses the same resolved values exposed in the UI and CLI.
+
+## WP-CLI Operator Surface
+
+Enterprise Auth exposes a read-only operational namespace for safe inspection and automation:
+
+```bash
+wp enterprise-auth provider list
+wp enterprise-auth site list
+wp enterprise-auth settings get --blog-id=2
+wp enterprise-auth user inspect admin@example.com --blog-id=2
+wp enterprise-auth route resolve user@example.com --blog-id=2
+wp enterprise-auth passkey audit --blog-id=2
+wp enterprise-auth scim status --blog-id=2
+```
+
+Use explicit scope in Multisite. Site-local commands use `--blog-id=<id>`, and network-wide inspection uses `--network` where supported.
+
+## WordPress Admin Visibility
+
+The plugin adds a read-only IAM status layer to wp-admin for support and audit workflows.
+
+- Users list columns surface identity source, provider binding, passkey summary, and suspension posture.
+- Profile and Edit User screens show the current site's identity context in Multisite.
+- The visibility layer is intentionally read-only and does not expose secrets.
 
 ## Custom Attribute Mapping
 
