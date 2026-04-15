@@ -232,6 +232,7 @@ final class EffectiveSettingsResolver {
 				'lockdown_mode' => (bool) ( $local_settings['lockdown_mode'] ?? self::DEFAULTS['lockdown_mode'] ),
 				'app_passwords' => (bool) ( $local_settings['app_passwords'] ?? self::DEFAULTS['app_passwords'] ),
 				'require_device_bound_authenticators' => (bool) ( $local_settings['require_device_bound_authenticators'] ?? self::DEFAULTS['require_device_bound_authenticators'] ),
+				'private_content_login_required' => (bool) ( $local_settings['private_content_login_required'] ?? self::DEFAULTS['private_content_login_required'] ),
 				'role_ceiling' => (string) ( $local_settings['role_ceiling'] ?? self::DEFAULTS['role_ceiling'] ),
 				'session_timeout' => (int) ( $local_settings['session_timeout'] ?? self::DEFAULTS['session_timeout'] ),
 				'deprovision_steward_user_id' => $steward_user_id,
