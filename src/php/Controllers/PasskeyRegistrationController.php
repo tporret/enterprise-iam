@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\CredentialRepository;
+use EnterpriseAuth\Plugin\OneTimeTransient;
 use EnterpriseAuth\Plugin\WebAuthnHelper;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\PublicKeyCredential;
@@ -30,6 +31,7 @@ final class PasskeyRegistrationController {
 	private const ROUTE         = '/passkeys/register';
 	private const TRANSIENT     = 'ea_webauthn_reg_';
 	private const CHALLENGE_TTL = 60; // seconds
+	private const USER_HANDLE_META = '_enterprise_auth_webauthn_user_handle';
 
 	public function register_routes(): void {
 		register_rest_route(
@@ -77,6 +79,7 @@ final class PasskeyRegistrationController {
 
 		// Build the user entity; the id is a stable opaque handle.
 		$user_handle  = hash( 'sha256', (string) $user_id, true );
+		update_user_meta( $user_id, self::USER_HANDLE_META, base64_encode( $user_handle ) );
 		$display_name = $user->display_name;
 		if ( '' === $display_name ) {
 			$display_name = $user->user_login;
@@ -137,8 +140,7 @@ final class PasskeyRegistrationController {
 		$user_id = (int) $user->ID;
 
 		// Retrieve the stored creation options.
-		$options_json = get_transient( self::transient_key( $user_id ) );
-		delete_transient( self::transient_key( $user_id ) );
+		$options_json = OneTimeTransient::consume( self::transient_key( $user_id ) );
 
 		if ( ! $options_json ) {
 			return $this->error_response(

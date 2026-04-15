@@ -76,8 +76,7 @@ final class FederationFlowGuard {
 		}
 
 		$transient_key = self::transient_key( $protocol, $flow_key );
-		$raw           = get_transient( $transient_key );
-		delete_transient( $transient_key );
+		$raw           = OneTimeTransient::consume( $transient_key );
 
 		$cookie_value = self::read_binding_cookie( $protocol, $flow_key );
 		self::clear_binding_cookie( $protocol, $flow_key );

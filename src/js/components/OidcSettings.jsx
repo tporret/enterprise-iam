@@ -1,13 +1,9 @@
 import { useState, useCallback, useEffect } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 import AttributeMappingSection from './AttributeMappingSection';
-
-const WP_ROLES = [
-	{ value: 'editor', label: 'Editor' },
-	{ value: 'author', label: 'Author' },
-	{ value: 'contributor', label: 'Contributor' },
-	{ value: 'subscriber', label: 'Subscriber' },
-];
+import RoleMappingRow from './RoleMappingRow';
+import IdpListCard from './IdpListCard';
+import useIdpEditorState, { buildIdpPayload } from './useIdpEditorState';
 
 const OIDC_PROVIDER_OPTIONS = [
 	{ value: 'generic', label: 'Generic OIDC' },
@@ -37,38 +33,6 @@ const EMPTY_IDP = {
 	force_reauth: false,
 };
 
-function RoleMappingRow( { group, role, onChange, onRemove } ) {
-	return (
-		<div className="ea-role-row">
-			<input
-				type="text"
-				className="ea-input ea-role-row__group"
-				placeholder="IdP Group Name"
-				value={ group }
-				onChange={ ( e ) => onChange( 'group', e.target.value ) }
-			/>
-			<select
-				className="ea-input ea-role-row__role"
-				value={ role }
-				onChange={ ( e ) => onChange( 'role', e.target.value ) }
-			>
-				{ WP_ROLES.map( ( r ) => (
-					<option key={ r.value } value={ r.value }>
-						{ r.label }
-					</option>
-				) ) }
-			</select>
-			<button
-				type="button"
-				className="ea-btn ea-btn--danger ea-btn--small"
-				onClick={ onRemove }
-			>
-				&times;
-			</button>
-		</div>
-	);
-}
-
 export default function OidcSettings( {
 	showToast,
 	endpointBase = 'enterprise-auth/v1/idps',
@@ -79,33 +43,38 @@ export default function OidcSettings( {
 	addButtonLabel = '+ Add OIDC IdP',
 	emptyMessage,
 } ) {
-	const [ idps, setIdps ] = useState( [] );
-	const [ loaded, setLoaded ] = useState( false );
-	const [ editing, setEditing ] = useState( null );
 	const [ saving, setSaving ] = useState( false );
-	const [ roleMappings, setRoleMappings ] = useState( [] );
-	const [ domainText, setDomainText ] = useState( '' );
+	const {
+		idps,
+		loaded,
+		editing,
+		roleMappings,
+		domainText,
+		setDomainText,
+		loadIdps,
+		startEdit,
+		startNew,
+		cancelEdit,
+		updateField,
+		updateRoleMapping,
+		removeRoleMapping,
+		addRoleMapping,
+		handleDelete,
+	} = useIdpEditorState( {
+		endpointBase,
+		protocol: 'oidc',
+		showToast,
+		emptyIdp: EMPTY_IDP,
+		onEditorChanged: () => setDiscoveryUrl( '' ),
+	} );
 
 	// Discovery auto-fill state.
 	const [ discoveryUrl, setDiscoveryUrl ] = useState( '' );
 	const [ fetching, setFetching ] = useState( false );
 
-	// Load IdPs on mount (filter to OIDC only for display).
-	const loadIdps = useCallback( () => {
-		apiFetch( { path: endpointBase } )
-			.then( ( data ) => {
-				const all = Array.isArray( data ) ? data : [];
-				setIdps( all.filter( ( idp ) => idp.protocol === 'oidc' ) );
-				setLoaded( true );
-			} )
-			.catch( () => {
-				setLoaded( true );
-			} );
-	}, [ endpointBase ] );
-
-	useEffect( () => {
-		loadIdps();
-	}, [ loadIdps ] );
+	const startEditOidc = useCallback( ( id ) => {
+		startEdit( id, 'Failed to load OIDC configuration.' );
+	}, [ startEdit ] );
 
 	// ── Discovery Auto-Fill ─────────────────────────────────────────────
 
@@ -159,64 +128,6 @@ export default function OidcSettings( {
 
 	// ── Editing helpers ─────────────────────────────────────────────────
 
-	const openEditor = useCallback( ( idp ) => {
-		const mapped = Object.entries( idp.role_mapping || {} ).map(
-			( [ group, role ] ) => ( { group, role } )
-		);
-		setEditing( { ...idp } );
-		setRoleMappings(
-			mapped.length > 0 ? mapped : [ { group: '', role: 'subscriber' } ]
-		);
-		setDomainText( ( idp.domain_mapping || [] ).join( ', ' ) );
-		setDiscoveryUrl( '' );
-	}, [] );
-
-	const startEdit = useCallback( async ( id ) => {
-		try {
-			const idp = await apiFetch( {
-				path: `${ endpointBase }/${ id }`,
-			} );
-
-			openEditor( idp );
-		} catch {
-			showToast( 'Failed to load OIDC configuration.', 'error' );
-		}
-	}, [ endpointBase, openEditor, showToast ] );
-
-	const startNew = useCallback( () => {
-		openEditor( { ...EMPTY_IDP } );
-	}, [ openEditor ] );
-
-	const cancelEdit = useCallback( () => {
-		setEditing( null );
-		setRoleMappings( [] );
-		setDomainText( '' );
-		setDiscoveryUrl( '' );
-	}, [] );
-
-	const updateField = useCallback( ( key, value ) => {
-		setEditing( ( prev ) => ( { ...prev, [ key ]: value } ) );
-	}, [] );
-
-	const updateRoleMapping = useCallback( ( idx, field, value ) => {
-		setRoleMappings( ( prev ) => {
-			const next = [ ...prev ];
-			next[ idx ] = { ...next[ idx ], [ field ]: value };
-			return next;
-		} );
-	}, [] );
-
-	const removeRoleMapping = useCallback( ( idx ) => {
-		setRoleMappings( ( prev ) => prev.filter( ( _, i ) => i !== idx ) );
-	}, [] );
-
-	const addRoleMapping = useCallback( () => {
-		setRoleMappings( ( prev ) => [
-			...prev,
-			{ group: '', role: 'subscriber' },
-		] );
-	}, [] );
-
 	// ── Save ────────────────────────────────────────────────────────────
 
 	const handleSave = useCallback( async () => {
@@ -226,24 +137,7 @@ export default function OidcSettings( {
 
 		setSaving( true );
 
-		const role_mapping = {};
-		roleMappings.forEach( ( { group, role } ) => {
-			const g = group.trim();
-			if ( g ) {
-				role_mapping[ g ] = role;
-			}
-		} );
-
-		const domain_mapping = domainText
-			.split( ',' )
-			.map( ( d ) => d.trim().toLowerCase() )
-			.filter( Boolean );
-
-		const payload = {
-			...editing,
-			role_mapping,
-			domain_mapping,
-		};
+		const payload = buildIdpPayload( editing, roleMappings, domainText );
 
 		try {
 			await apiFetch( {
@@ -264,24 +158,6 @@ export default function OidcSettings( {
 			setSaving( false );
 		}
 	}, [ endpointBase, editing, roleMappings, domainText, showToast, cancelEdit, loadIdps ] );
-
-	// ── Delete ──────────────────────────────────────────────────────────
-
-	const handleDelete = useCallback(
-		async ( id ) => {
-			try {
-				await apiFetch( {
-					path: `${ endpointBase }/${ id }`,
-					method: 'DELETE',
-				} );
-				showToast( 'IdP deleted.' );
-				loadIdps();
-			} catch {
-				showToast( 'Failed to delete IdP.', 'error' );
-			}
-		},
-		[ endpointBase, showToast, loadIdps ]
-	);
 
 	if ( ! loaded ) {
 		return <p style={ { color: '#64748b' } }>Loading OIDC settings&hellip;</p>;
@@ -512,104 +388,19 @@ export default function OidcSettings( {
 
 	return (
 		<div className="ea-saml">
-			<div className="ea-card">
-				{ readOnlyNotice && (
-					<p className="ea-card__desc ea-card__desc--notice">{ readOnlyNotice }</p>
-				) }
-				<div
-					className="ea-card__body"
-					style={ {
-						justifyContent: 'space-between',
-						alignItems: 'center',
-					} }
-				>
-					<h3 className="ea-card__title" style={ { margin: 0 } }>
-						{ listTitle }
-					</h3>
-					{ allowMutations && (
-						<button
-							type="button"
-							className="ea-btn ea-btn--primary ea-btn--small"
-							onClick={ startNew }
-						>
-							{ addButtonLabel }
-						</button>
-					) }
-				</div>
-
-				{ idps.length === 0 && (
-					<p
-						className="ea-card__desc"
-						style={ { marginTop: 12 } }
-					>
-						{ emptyMessage || 'No OIDC providers configured yet. Click "Add OIDC IdP" to set up your first connection.' }
-					</p>
-				) }
-
-				{ idps.length > 0 && (
-					<table className="ea-idp-table">
-						<thead>
-							<tr>
-								<th>Name</th>
-								<th>Domains</th>
-								{ showAssignmentCount && <th>Sites</th> }
-								<th>Status</th>
-								{ allowMutations && <th>Actions</th> }
-							</tr>
-						</thead>
-						<tbody>
-							{ idps.map( ( idp ) => (
-								<tr key={ idp.id }>
-									<td>
-										{ idp.provider_name || '(Untitled)' }
-									</td>
-									<td>
-										{ ( idp.domain_mapping || [] ).join(
-											', '
-										) || '\u2014' }
-									</td>
-									{ showAssignmentCount && <td>{ idp.assignment_count || 0 }</td> }
-									<td>
-										<span
-											className={ `ea-badge ${
-												idp.enabled
-													? 'ea-badge--active'
-													: 'ea-badge--inactive'
-											}` }
-										>
-											{ idp.enabled
-												? 'Active'
-												: 'Inactive' }
-										</span>
-									</td>
-									{ allowMutations && (
-										<td>
-											<button
-												type="button"
-												className="ea-btn ea-btn--secondary ea-btn--small"
-												onClick={ () =>
-													startEdit( idp.id )
-												}
-											>
-												Edit
-											</button>{ ' ' }
-											<button
-												type="button"
-												className="ea-btn ea-btn--danger ea-btn--small"
-												onClick={ () =>
-													handleDelete( idp.id )
-												}
-											>
-												Delete
-											</button>
-										</td>
-									) }
-								</tr>
-							) ) }
-						</tbody>
-					</table>
-				) }
-			</div>
+			<IdpListCard
+				readOnlyNotice={ readOnlyNotice }
+				listTitle={ listTitle }
+				allowMutations={ allowMutations }
+				addButtonLabel={ addButtonLabel }
+				onAdd={ startNew }
+				idps={ idps }
+				emptyMessage={ emptyMessage }
+				emptyFallback={ 'No OIDC providers configured yet. Click "Add OIDC IdP" to set up your first connection.' }
+				showAssignmentCount={ showAssignmentCount }
+				onEdit={ startEditOidc }
+				onDelete={ handleDelete }
+			/>
 		</div>
 	);
 }

@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\CredentialRepository;
+use EnterpriseAuth\Plugin\OneTimeTransient;
 use EnterpriseAuth\Plugin\WebAuthnHelper;
 use Webauthn\AuthenticatorAssertionResponse;
 use Webauthn\PublicKeyCredential;
@@ -26,6 +27,7 @@ final class PasskeyLoginController {
 	private const ROUTE         = '/passkeys/login';
 	private const TRANSIENT     = 'ea_webauthn_login_';
 	private const CHALLENGE_TTL = 60; // seconds
+	private const USER_HANDLE_META = '_enterprise_auth_webauthn_user_handle';
 
 	public function register_routes(): void {
 		register_rest_route(
@@ -128,8 +130,7 @@ final class PasskeyLoginController {
 			return new \WP_REST_Response( array( 'error' => 'Missing session key.' ), 400 );
 		}
 
-		$stored_raw = get_transient( self::transient_key( $session_key ) );
-		delete_transient( self::transient_key( $session_key ) );
+		$stored_raw = OneTimeTransient::consume( self::transient_key( $session_key ) );
 
 		if ( ! $stored_raw ) {
 			return new \WP_REST_Response( array( 'error' => 'Challenge expired or not found.' ), 400 );
@@ -209,7 +210,12 @@ final class PasskeyLoginController {
 
 		// Log the user in (session cookie, not persistent "remember me").
 		wp_set_auth_cookie( $wp_user_id, false, is_ssl() );
-		do_action( 'wp_login', get_userdata( $wp_user_id )->user_login, get_userdata( $wp_user_id ) );
+		$wp_user = get_userdata( $wp_user_id );
+		if ( ! $wp_user instanceof \WP_User ) {
+			return new \WP_REST_Response( array( 'error' => 'User not found.' ), 400 );
+		}
+
+		do_action( 'wp_login', $wp_user->user_login, $wp_user );
 
 		$stored_redirect_to = $this->validated_redirect_target( (string) ( $stored['redirect_to'] ?? '' ) );
 		$redirect_to = '' !== $stored_redirect_to ? $stored_redirect_to : admin_url();
@@ -241,17 +247,37 @@ final class PasskeyLoginController {
 	 * We look through the credentials table to find the matching user_id.
 	 */
 	private function resolve_user_id( string $user_handle ): int {
+		$encoded = base64_encode( $user_handle );
+
+		$user_ids = get_users(
+			array(
+				'meta_key'   => self::USER_HANDLE_META,
+				'meta_value' => $encoded,
+				'number'     => 1,
+				'fields'     => 'ids',
+			)
+		);
+
+		if ( ! empty( $user_ids ) ) {
+			return (int) $user_ids[0];
+		}
+
+		return $this->resolve_user_id_legacy_scan( $user_handle );
+	}
+
+	private function resolve_user_id_legacy_scan( string $user_handle ): int {
 		global $wpdb;
 
 		$table = \EnterpriseAuth\Plugin\DatabaseManager::table_name();
 
-		// More reliable: iterate known IDs from our table and match handle.
+		// Backward compatibility for users who have not re-registered since handle metadata was introduced.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$user_ids = $wpdb->get_col( "SELECT DISTINCT user_id FROM {$table}" );
 
 		foreach ( $user_ids as $uid ) {
 			$expected = hash( 'sha256', (string) $uid, true );
 			if ( hash_equals( $expected, $user_handle ) ) {
+				update_user_meta( (int) $uid, self::USER_HANDLE_META, base64_encode( $user_handle ) );
 				return (int) $uid;
 			}
 		}

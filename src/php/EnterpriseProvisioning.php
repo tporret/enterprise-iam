@@ -51,7 +51,7 @@ final class EnterpriseProvisioning {
 	 * @return true|\WP_Error
 	 */
 	public static function provision_and_login( array $idp, array $attributes ) {
-		$email          = sanitize_email( $attributes['email'] ?? '' );
+		$email          = self::canonicalize_email( (string) ( $attributes['email'] ?? '' ) );
 		$idp_uid        = sanitize_text_field( $attributes['idp_uid'] ?? '' );
 		$idp_id         = $idp['id'] ?? '';
 		$idp_issuer     = sanitize_text_field( $attributes['idp_issuer'] ?? '' );
@@ -61,21 +61,44 @@ final class EnterpriseProvisioning {
 			return new \WP_Error( 'enterprise_provision', 'No valid email address in identity assertion.' );
 		}
 
-		// ── 1. Primary lookup: immutable IdP UID ────────────────────────
-		$user = self::find_user_by_idp_uid( $idp_id, $idp_uid );
+		$user = self::resolve_existing_user( $idp_id, $idp_uid, $idp_issuer, $email, $email_verified );
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
 
+		if ( ! $user ) {
+			$user = self::provision_new_user( $idp, $attributes, $email, $idp_uid, $idp_issuer, $email_verified );
+			if ( is_wp_error( $user ) ) {
+				return $user;
+			}
+		}
+
+		// Map IdP groups → WP roles (only for SSO-provisioned users).
+		self::apply_role_mapping( $user, $idp, (array) ( $attributes['groups'] ?? array() ) );
+
+		self::finalize_authenticated_session( $user, $idp, $attributes, $idp_issuer );
+
+		return true;
+	}
+
+	private static function canonicalize_email( string $email ): string {
+		return strtolower( sanitize_email( $email ) );
+	}
+
+	/**
+	 * @return \WP_User|\WP_Error|null
+	 */
+	private static function resolve_existing_user( string $idp_id, string $idp_uid, string $idp_issuer, string $email, bool $email_verified ) {
+		$user = self::find_user_by_idp_uid( $idp_id, $idp_uid );
 		if ( $user ) {
-			// ── Break-glass: reject SSO for administrators / user ID 1 ──
 			$admin_check = self::reject_if_admin( $user );
 			if ( is_wp_error( $admin_check ) ) {
 				return $admin_check;
 			}
 
-			// Verify the issuer hasn't changed (iss+sub composite check).
 			if ( '' !== $idp_issuer ) {
 				$stored_issuer = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), true );
 				if ( '' === $stored_issuer ) {
-					// Back-fill issuer for accounts created before this check.
 					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
 				} elseif ( $stored_issuer !== $idp_issuer ) {
 					return new \WP_Error(
@@ -84,213 +107,180 @@ final class EnterpriseProvisioning {
 					);
 				}
 			}
-		} elseif ( '' !== $idp_uid ) {
-			// ── 2. First-time binding: fall back to email lookup ─────────
-			// Require a verified email before binding an IdP identity to an
-			// existing WordPress account. Without this check, an attacker who
-			// controls an IdP could claim any email address and hijack the
-			// linked WordPress account.
-			if ( ! $email_verified ) {
+
+			return $user;
+		}
+
+		if ( ! $email_verified ) {
+			return new \WP_Error(
+				'enterprise_provision',
+				'Your identity provider did not confirm your email address (email_verified). Login blocked for account safety.'
+			);
+		}
+
+		$user = self::find_user_by_email_for_current_site( $email );
+		if ( ! $user ) {
+			return null;
+		}
+
+		$eligibility = self::validate_existing_user_provider_binding( $user, $idp_id );
+		if ( is_wp_error( $eligibility ) ) {
+			return $eligibility;
+		}
+
+		if ( '' !== $idp_uid ) {
+			$stored_uid = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );
+			if ( '' === $stored_uid ) {
+				self::clean_sweep_legacy_access( $user->ID );
+				self::bind_user_to_idp( $user->ID, $idp_id, $idp_uid, $idp_issuer );
+			} elseif ( $stored_uid !== $idp_uid ) {
 				return new \WP_Error(
 					'enterprise_provision',
-					'Your identity provider did not confirm your email address (email_verified). Login blocked for account safety.'
+					'Identity mismatch: the IdP unique identifier does not match the bound account. Login blocked.'
 				);
-			}
-
-			$user = get_user_by( 'email', $email );
-
-			// Multisite: user exists globally but isn't on this site — treat as new.
-			if ( is_multisite() && $user && ! is_user_member_of_blog( $user->ID, get_current_blog_id() ) ) {
-				$user = null;
-			}
-
-			if ( $user ) {
-				// Break-glass: reject SSO for administrators / user ID 1.
-				$admin_check = self::reject_if_admin( $user );
-				if ( is_wp_error( $admin_check ) ) {
-					return $admin_check;
-				}
-
-				$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
-
-				if ( empty( $existing_provider ) ) {
-					return new \WP_Error(
-						'enterprise_provision',
-						'A local account already exists with this email address. SSO login is not permitted for local accounts.'
-					);
-				}
-
-				if ( $existing_provider !== $idp_id ) {
-					return new \WP_Error(
-						'enterprise_provision',
-						'This account is managed by a different identity provider.'
-					);
-				}
-
-				// The user exists and belongs to this IdP but has no UID stored yet.
-				// Bind the immutable UID and issuer now.
-				$stored_uid = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );
-				if ( '' === $stored_uid ) {
-					self::clean_sweep_legacy_access( $user->ID );
-					self::bind_user_to_idp( $user->ID, $idp_id, $idp_uid, $idp_issuer );
-				} elseif ( $stored_uid !== $idp_uid ) {
-					// UID mismatch — possible IdP spoofing.
-					return new \WP_Error(
-						'enterprise_provision',
-						'Identity mismatch: the IdP unique identifier does not match the bound account. Login blocked.'
-					);
-				}
-			}
-		} else {
-			// No idp_uid provided — legacy email-only lookup.
-			// Without an immutable UID, email is the only identifier.
-			// Require verified email for this unsafe path.
-			if ( ! $email_verified ) {
-				return new \WP_Error(
-					'enterprise_provision',
-					'Your identity provider did not confirm your email address (email_verified). Login blocked for account safety.'
-				);
-			}
-
-			$user = get_user_by( 'email', $email );
-
-			// Multisite: user exists globally but isn't on this site — treat as new.
-			if ( is_multisite() && $user && ! is_user_member_of_blog( $user->ID, get_current_blog_id() ) ) {
-				$user = null;
-			}
-
-			if ( $user ) {
-				$admin_check = self::reject_if_admin( $user );
-				if ( is_wp_error( $admin_check ) ) {
-					return $admin_check;
-				}
-
-				$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
-
-				if ( empty( $existing_provider ) ) {
-					return new \WP_Error(
-						'enterprise_provision',
-						'A local account already exists with this email address. SSO login is not permitted for local accounts.'
-					);
-				}
-
-				if ( $existing_provider !== $idp_id ) {
-					return new \WP_Error(
-						'enterprise_provision',
-						'This account is managed by a different identity provider.'
-					);
-				}
 			}
 		}
 
-		// ── 3. New user creation ────────────────────────────────────────
+		return $user;
+	}
+
+	private static function find_user_by_email_for_current_site( string $email ): ?\WP_User {
+		$user = get_user_by( 'email', $email );
 		if ( ! $user ) {
-			// Never create a WordPress account from an unverified email.
-			if ( ! $email_verified ) {
-				return new \WP_Error(
-					'enterprise_provision',
-					'Cannot create an account: the identity provider did not confirm your email address (email_verified).'
-				);
-			}
+			return null;
+		}
 
-			// ── TOCTOU guard: use a DB-level lock to prevent duplicate
-			// accounts when two identical SSO assertions arrive at the
-			// same millisecond for a first-time user. The lock serialises
-			// the check-email + insert-user window per email address.
-			global $wpdb;
-			$lock_key = 'ea_jit_' . md5( $email );
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			$locked = $wpdb->query(
-				$wpdb->prepare( "SELECT GET_LOCK(%s, 5)", $lock_key )
+		if ( is_multisite() && ! is_user_member_of_blog( $user->ID, get_current_blog_id() ) ) {
+			return null;
+		}
+
+		return $user;
+	}
+
+	/**
+	 * @return true|\WP_Error
+	 */
+	private static function validate_existing_user_provider_binding( \WP_User $user, string $idp_id ) {
+		$admin_check = self::reject_if_admin( $user );
+		if ( is_wp_error( $admin_check ) ) {
+			return $admin_check;
+		}
+
+		$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
+
+		if ( empty( $existing_provider ) ) {
+			return new \WP_Error(
+				'enterprise_provision',
+				'A local account already exists with this email address. SSO login is not permitted for local accounts.'
 			);
+		}
 
-			// Re-check after acquiring the lock — the other thread may
-			// have already created the user while we waited.
-			$user = get_user_by( 'email', $email );
+		if ( $existing_provider !== $idp_id ) {
+			return new \WP_Error(
+				'enterprise_provision',
+				'This account is managed by a different identity provider.'
+			);
+		}
 
-			// Determine if the user is actually on this blog (Multisite).
+		return true;
+	}
+
+	/**
+	 * @return \WP_User|\WP_Error
+	 */
+	private static function provision_new_user( array $idp, array $attributes, string $email, string $idp_uid, string $idp_issuer, bool $email_verified ) {
+		if ( ! $email_verified ) {
+			return new \WP_Error(
+				'enterprise_provision',
+				'Cannot create an account: the identity provider did not confirm your email address (email_verified).'
+			);
+		}
+
+		global $wpdb;
+		$lock_key = 'ea_jit_' . md5( $email );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->query( $wpdb->prepare( "SELECT GET_LOCK(%s, 5)", $lock_key ) );
+
+		try {
+			$user         = get_user_by( 'email', $email );
 			$on_this_blog = $user && ( ! is_multisite() || is_user_member_of_blog( $user->ID, get_current_blog_id() ) );
 
 			if ( $user && $on_this_blog ) {
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
-
-				// The parallel thread created the account; verify it is
-				// SSO-managed and belongs to this IdP before proceeding.
 				$admin_check = self::reject_if_admin( $user );
 				if ( is_wp_error( $admin_check ) ) {
 					return $admin_check;
 				}
+
 				$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
-				if ( ! empty( $existing_provider ) && $existing_provider !== $idp_id ) {
+				if ( ! empty( $existing_provider ) && $existing_provider !== ( $idp['id'] ?? '' ) ) {
 					return new \WP_Error(
 						'enterprise_provision',
 						'This account is managed by a different identity provider.'
 					);
 				}
-			} elseif ( $user && ! $on_this_blog ) {
-				// Multisite: user exists globally but not on this blog.
-				// Add them instead of creating a duplicate account.
+
+				return $user;
+			}
+
+			if ( $user && ! $on_this_blog ) {
 				$admin_check = self::reject_if_admin( $user );
 				if ( is_wp_error( $admin_check ) ) {
-					// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-					$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
 					return $admin_check;
 				}
+
 				add_user_to_blog( get_current_blog_id(), $user->ID, 'subscriber' );
-
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
-
-				// Bind site-scoped SSO identity meta for this blog.
 				$should_clean_sweep = self::should_clean_sweep_before_binding( $user->ID );
-				self::bind_user_to_idp( $user->ID, $idp_id, $idp_uid, $idp_issuer );
+				self::bind_user_to_idp( $user->ID, (string) ( $idp['id'] ?? '' ), $idp_uid, $idp_issuer );
 				if ( $should_clean_sweep ) {
 					self::clean_sweep_legacy_access( $user->ID );
 				}
-			} else {
-				$username   = self::generate_username( $email );
-				$password   = wp_generate_password( 32, true, true );
-				$first_name = sanitize_text_field( $attributes['first_name'] ?? '' );
-				$last_name  = sanitize_text_field( $attributes['last_name'] ?? '' );
-				$display    = trim( "$first_name $last_name" );
-				if ( '' === $display ) {
-					$display = $username;
-				}
 
-				$user_id = wp_insert_user(
-					array(
-						'user_login'   => $username,
-						'user_email'   => $email,
-						'user_pass'    => $password,
-						'first_name'   => $first_name,
-						'last_name'    => $last_name,
-						'display_name' => $display,
-						'role'         => 'subscriber',
-					)
-				);
-
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
-
-				if ( is_wp_error( $user_id ) ) {
-					return $user_id;
-				}
-
-				$user = get_user_by( 'id', $user_id );
-				self::bind_user_to_idp( $user_id, $idp_id, $idp_uid, $idp_issuer );
+				return $user;
 			}
+
+			$username   = self::generate_username( $email );
+			$password   = wp_generate_password( 32, true, true );
+			$first_name = sanitize_text_field( $attributes['first_name'] ?? '' );
+			$last_name  = sanitize_text_field( $attributes['last_name'] ?? '' );
+			$display    = trim( "$first_name $last_name" );
+			if ( '' === $display ) {
+				$display = $username;
+			}
+
+			$user_id = wp_insert_user(
+				array(
+					'user_login'   => $username,
+					'user_email'   => $email,
+					'user_pass'    => $password,
+					'first_name'   => $first_name,
+					'last_name'    => $last_name,
+					'display_name' => $display,
+					'role'         => 'subscriber',
+				)
+			);
+
+			if ( is_wp_error( $user_id ) ) {
+				return $user_id;
+			}
+
+			self::bind_user_to_idp( (int) $user_id, (string) ( $idp['id'] ?? '' ), $idp_uid, $idp_issuer );
+
+			$created_user = get_user_by( 'id', $user_id );
+			if ( ! $created_user instanceof \WP_User ) {
+				return new \WP_Error( 'enterprise_provision', 'Provisioning created an invalid local account state.' );
+			}
+
+			return $created_user;
+		} finally {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
 		}
+	}
 
-		// Map IdP groups → WP roles (only for SSO-provisioned users).
-		self::apply_role_mapping( $user, $idp, (array) ( $attributes['groups'] ?? array() ) );
-
-		// ── Session control ─────────────────────────────────────────────
-		// Record the SSO login timestamp for session timeout enforcement.
+	private static function finalize_authenticated_session( \WP_User $user, array $idp, array $attributes, string $idp_issuer ): void {
 		update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ), time() );
 
-		// If the IdP provided a session expiry (SAML SessionNotOnOrAfter),
-		// store it so the session-check hook can honour it.
 		$session_expires = $attributes['session_not_on_or_after'] ?? 0;
 		if ( $session_expires > 0 ) {
 			update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ), (int) $session_expires );
@@ -312,15 +302,10 @@ final class EnterpriseProvisioning {
 			delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
 		}
 
-		// Use a browser-session cookie (not persistent "remember me") so
-		// closing the browser ends the session. The `auth_cookie_expiration`
-		// filter in Core.php further caps the server-side lifetime.
 		wp_set_auth_cookie( $user->ID, false );
 		do_action( 'wp_login', $user->user_login, $user );
 
-		// Store the last-used IdP ID in a long-lived cookie so session-expiry
-		// re-auth can redirect seamlessly to the correct provider.
-		$idp_id = $idp['id'] ?? '';
+		$idp_id = (string) ( $idp['id'] ?? '' );
 		if ( '' !== $idp_id && ! headers_sent() ) {
 			setcookie(
 				self::last_idp_cookie_name(),
@@ -344,8 +329,6 @@ final class EnterpriseProvisioning {
 				'idp_issuer'   => $idp_issuer,
 			)
 		);
-
-		return true;
 	}
 
 	/**
