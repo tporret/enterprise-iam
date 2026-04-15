@@ -27,10 +27,10 @@ final class FederationFlowGuard {
 			return new \WP_Error( 'ea_federation_flow_invalid', 'Federation flow key was invalid.' );
 		}
 
-		if ( 'saml' === $protocol && ! is_ssl() ) {
+		if ( self::requires_https_transport( $protocol ) && ! is_ssl() ) {
 			return new \WP_Error(
 				'ea_federation_flow_https_required',
-				'SAML SSO requires HTTPS to enforce browser-bound request correlation.'
+				sprintf( '%s SSO requires HTTPS to enforce browser-bound request correlation.', strtoupper( $protocol ) )
 			);
 		}
 
@@ -73,6 +73,13 @@ final class FederationFlowGuard {
 
 		if ( '' === $protocol || '' === $flow_key ) {
 			return new \WP_Error( 'ea_federation_flow_invalid', 'Federation flow key was invalid.' );
+		}
+
+		if ( self::requires_https_transport( $protocol ) && ! is_ssl() ) {
+			return new \WP_Error(
+				'ea_federation_flow_https_required',
+				sprintf( '%s SSO requires HTTPS to enforce browser-bound request correlation.', strtoupper( $protocol ) )
+			);
 		}
 
 		$transient_key = self::transient_key( $protocol, $flow_key );
@@ -175,5 +182,9 @@ final class FederationFlowGuard {
 
 	private static function cookie_samesite( string $protocol ): string {
 		return 'saml' === $protocol ? 'None' : 'Lax';
+	}
+
+	private static function requires_https_transport( string $protocol ): bool {
+		return in_array( $protocol, array( 'saml', 'oidc' ), true );
 	}
 }

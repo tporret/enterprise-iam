@@ -397,6 +397,90 @@ Group role assignment uses the same mapping engine as SAML/OIDC (exact match →
 
 When an IdP sends `PATCH` with `active: false`, the user's roles are removed and a site-scoped SCIM suspension flag is set. Suspended users are blocked from all login methods (password, passkey, SSO) with the message "Account suspended by Identity Provider." Explicit Multisite network deprovision also sets a network-wide suspension flag so the account remains blocked even after all site memberships are removed.
 
+## Targeted Security Verification (Manual curl)
+
+Use this focused plan to validate two hardening controls end-to-end:
+
+- OIDC federation flow hard-fails on HTTP transport
+- SCIM pre-auth failed-attempt throttling triggers before sustained brute-force traffic
+
+### Setup
+
+```bash
+export BASE_HTTPS="https://secaudit.localhost"
+export BASE_HTTP="http://secaudit.localhost"
+export OIDC_IDP_ID="your-oidc-idp-id"
+export SCIM_TOKEN="your-valid-scim-token"
+```
+
+### 1) OIDC HTTPS control check (expected success path)
+
+```bash
+curl -isk -D - -o /dev/null \
+  "$BASE_HTTPS/wp-json/enterprise-auth/v1/oidc/login?idp_id=$OIDC_IDP_ID"
+```
+
+Expected:
+
+- `302` status
+- `Location` header points to the configured OIDC authorization endpoint
+
+### 2) OIDC HTTP hard-fail check (new transport guard)
+
+```bash
+curl -isk -D - -o /dev/null \
+  "$BASE_HTTP/wp-json/enterprise-auth/v1/oidc/login?idp_id=$OIDC_IDP_ID"
+```
+
+Expected:
+
+- Plugin-level hard-fail: `500` status with OIDC initiation error payload
+- If your edge/web server force-redirects HTTP to HTTPS first, you may see `301`/`308` instead. In that case, run this check against a non-redirecting app path in a staging/sandbox environment to verify the plugin guard itself.
+
+### 3) SCIM pre-auth throttle check (invalid token flood)
+
+```bash
+for i in $(seq 1 35); do
+  code=$(curl -ks -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer invalid-$i" \
+    "$BASE_HTTPS/wp-json/enterprise-auth/v1/scim/v2/Users")
+  printf "%02d -> %s\n" "$i" "$code"
+done
+```
+
+Expected:
+
+- Initial invalid attempts return `401`
+- After the pre-auth failure budget is exhausted, responses switch to `429`
+
+### 4) SCIM failure-budget reset on successful auth
+
+```bash
+curl -ks -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $SCIM_TOKEN" \
+  "$BASE_HTTPS/wp-json/enterprise-auth/v1/scim/v2/Users"
+
+curl -ks -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer invalid-after-success" \
+  "$BASE_HTTPS/wp-json/enterprise-auth/v1/scim/v2/Users"
+```
+
+Expected:
+
+- Valid token request returns `200`
+- Next invalid attempt returns `401` (not `429`), confirming failure counter reset
+
+### Expected Status Matrix
+
+| Scenario | Endpoint | Expected Status | Notes |
+|---|---|---|---|
+| OIDC over HTTPS | `GET /oidc/login?idp_id=...` | `302` | Redirects to IdP authorization endpoint |
+| OIDC over HTTP | `GET /oidc/login?idp_id=...` | `500` (plugin guard) or `301/308` (edge redirect) | `500` confirms plugin transport hard-fail is active |
+| SCIM invalid token before threshold | `GET /scim/v2/Users` | `401` | Unauthorized, failure count increments |
+| SCIM invalid token after threshold | `GET /scim/v2/Users` | `429` | Pre-auth abuse throttle engaged |
+| SCIM valid token | `GET /scim/v2/Users` | `200` | Success path clears failure counter |
+| Invalid token immediately after valid | `GET /scim/v2/Users` | `401` | Confirms counter reset on success |
+
 ## Main Endpoints
 
 - `POST /wp-json/enterprise-auth/v1/route-login`

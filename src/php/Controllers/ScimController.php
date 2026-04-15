@@ -25,6 +25,8 @@ final class ScimController {
 	private const NAMESPACE    = 'enterprise-auth/v1';
 	private const TOKEN_KEY    = 'enterprise_iam_scim_token';
 	private const RATE_LIMIT   = 300; // requests per minute
+	private const PRE_AUTH_FAILURE_LIMIT = 30; // failed auth attempts per client window
+	private const PRE_AUTH_FAILURE_TTL   = 300;
 	private const DEPROVISION_SCOPE_SITE = 'site';
 	private const DEPROVISION_SCOPE_NETWORK = 'network';
 
@@ -1052,24 +1054,26 @@ final class ScimController {
 	 * @return true|\WP_Error
 	 */
 	private function authenticate_bearer_token( \WP_REST_Request $request ) {
+		$client_key     = $this->pre_auth_client_key( $request );
+		$throttle_error = $this->check_pre_auth_failure_budget( $client_key );
+		if ( is_wp_error( $throttle_error ) ) {
+			return $throttle_error;
+		}
+
 		// 1. Extract the Authorization header.
 		$auth_header = $request->get_header( 'Authorization' );
 
 		if ( empty( $auth_header ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				'Missing Authorization header. A Bearer token is required.',
-				array( 'status' => 401 )
-			);
+			$this->record_pre_auth_failure( $client_key );
+
+			return new \WP_Error( 'rest_forbidden', 'Missing Authorization header. A Bearer token is required.', array( 'status' => 401 ) );
 		}
 
 		// 2. Ensure it's a Bearer scheme.
 		if ( ! preg_match( '/^Bearer\s+(.+)$/i', $auth_header, $matches ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				'Invalid Authorization header. Expected "Bearer <token>".',
-				array( 'status' => 401 )
-			);
+			$this->record_pre_auth_failure( $client_key );
+
+			return new \WP_Error( 'rest_forbidden', 'Invalid Authorization header. Expected "Bearer <token>".', array( 'status' => 401 ) );
 		}
 
 		$token = $matches[1];
@@ -1078,21 +1082,19 @@ final class ScimController {
 		$stored_hash = get_option( self::TOKEN_KEY, '' );
 
 		if ( empty( $stored_hash ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				'SCIM provisioning token has not been configured.',
-				array( 'status' => 401 )
-			);
+			$this->record_pre_auth_failure( $client_key );
+
+			return new \WP_Error( 'rest_forbidden', 'SCIM provisioning token has not been configured.', array( 'status' => 401 ) );
 		}
 
 		// 4. Constant-time comparison via wp_check_password (bcrypt).
 		if ( ! wp_check_password( $token, $stored_hash ) ) {
-			return new \WP_Error(
-				'rest_forbidden',
-				'Invalid SCIM Bearer token.',
-				array( 'status' => 401 )
-			);
+			$this->record_pre_auth_failure( $client_key );
+
+			return new \WP_Error( 'rest_forbidden', 'Invalid SCIM Bearer token.', array( 'status' => 401 ) );
 		}
+
+		$this->clear_pre_auth_failures( $client_key );
 
 		return true;
 	}
@@ -1124,6 +1126,62 @@ final class ScimController {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Build a stable pre-auth rate-limit key from the network source.
+	 */
+	private function pre_auth_client_key( \WP_REST_Request $request ): string {
+		$route = sanitize_text_field( (string) $request->get_route() );
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,WordPress.Security.ValidatedSanitizedInput.MissingUnslash
+		$remote_addr = $_SERVER['REMOTE_ADDR'] ?? '';
+		$remote_addr = is_string( $remote_addr ) ? sanitize_text_field( $remote_addr ) : '';
+
+		if ( '' === $remote_addr ) {
+			$remote_addr = 'unknown';
+		}
+
+		return $route . '|' . $remote_addr;
+	}
+
+	/**
+	 * Block repeated failed authentication attempts before expensive token checks.
+	 */
+	private function check_pre_auth_failure_budget( string $client_key ): ?\WP_Error {
+		$failure_count = (int) get_transient( $this->pre_auth_failure_key( $client_key ) );
+
+		if ( $failure_count >= self::PRE_AUTH_FAILURE_LIMIT ) {
+			return new \WP_Error(
+				'scim_auth_rate_limit',
+				'Too many failed SCIM authentication attempts. Please wait and retry.',
+				array( 'status' => 429 )
+			);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Track failed authentication attempts per client.
+	 */
+	private function record_pre_auth_failure( string $client_key ): void {
+		$key   = $this->pre_auth_failure_key( $client_key );
+		$count = (int) get_transient( $key );
+
+		++$count;
+		set_transient( $key, $count, self::PRE_AUTH_FAILURE_TTL );
+	}
+
+	/**
+	 * Reset failed-auth counters after a successful token check.
+	 */
+	private function clear_pre_auth_failures( string $client_key ): void {
+		delete_transient( $this->pre_auth_failure_key( $client_key ) );
+	}
+
+	private function pre_auth_failure_key( string $client_key ): string {
+		return 'ea_scim_auth_fail_' . md5( $client_key );
 	}
 
 	// ── Helpers ─────────────────────────────────────────────────────────
