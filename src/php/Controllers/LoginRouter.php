@@ -284,11 +284,14 @@ final class LoginRouter {
 	 * Derive a coarse client key for public route-login throttling.
 	 */
 	private function client_rate_limit_key( \WP_REST_Request $request ): string {
-		$forwarded_for = sanitize_text_field( (string) $request->get_header( 'x-forwarded-for' ) );
-		if ( '' !== $forwarded_for ) {
-			$parts = explode( ',', $forwarded_for );
-			if ( ! empty( $parts[0] ) ) {
-				return trim( (string) $parts[0] );
+		if ( defined( 'ENTERPRISE_AUTH_TRUST_PROXY_HEADERS' ) && ENTERPRISE_AUTH_TRUST_PROXY_HEADERS ) {
+			$forwarded_for = sanitize_text_field( (string) $request->get_header( 'x-forwarded-for' ) );
+			if ( '' !== $forwarded_for ) {
+				$parts = explode( ',', $forwarded_for );
+				$candidate = trim( (string) ( $parts[0] ?? '' ) );
+				if ( filter_var( $candidate, FILTER_VALIDATE_IP ) ) {
+					return $candidate;
+				}
 			}
 		}
 

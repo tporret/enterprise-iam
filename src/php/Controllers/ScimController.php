@@ -1134,9 +1134,23 @@ final class ScimController {
 	private function pre_auth_client_key( \WP_REST_Request $request ): string {
 		$route = sanitize_text_field( (string) $request->get_route() );
 
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,WordPress.Security.ValidatedSanitizedInput.MissingUnslash
-		$remote_addr = $_SERVER['REMOTE_ADDR'] ?? '';
-		$remote_addr = is_string( $remote_addr ) ? sanitize_text_field( $remote_addr ) : '';
+		$remote_addr = '';
+		if ( defined( 'ENTERPRISE_AUTH_TRUST_PROXY_HEADERS' ) && ENTERPRISE_AUTH_TRUST_PROXY_HEADERS ) {
+			$forwarded_for = sanitize_text_field( (string) $request->get_header( 'x-forwarded-for' ) );
+			if ( '' !== $forwarded_for ) {
+				$parts = explode( ',', $forwarded_for );
+				$candidate = trim( (string) ( $parts[0] ?? '' ) );
+				if ( filter_var( $candidate, FILTER_VALIDATE_IP ) ) {
+					$remote_addr = $candidate;
+				}
+			}
+		}
+
+		if ( '' === $remote_addr ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,WordPress.Security.ValidatedSanitizedInput.MissingUnslash
+			$remote_addr = $_SERVER['REMOTE_ADDR'] ?? '';
+			$remote_addr = is_string( $remote_addr ) ? sanitize_text_field( $remote_addr ) : '';
+		}
 
 		if ( '' === $remote_addr ) {
 			$remote_addr = 'unknown';

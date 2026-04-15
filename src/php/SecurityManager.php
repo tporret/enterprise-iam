@@ -58,18 +58,6 @@ final class SecurityManager {
 	 * Only allow users with the `list_users` capability.
 	 */
 	private function lockdown_rest_api(): void {
-		add_filter(
-			'rest_authentication_errors',
-			static function ( ?\WP_Error $result ): ?\WP_Error {
-				// Don't override an existing error.
-				if ( is_wp_error( $result ) ) {
-					return $result;
-				}
-
-				return $result;
-			}
-		);
-
 		// Restrict the /wp/v2/users endpoint to users with `list_users`.
 		add_filter(
 			'rest_pre_dispatch',

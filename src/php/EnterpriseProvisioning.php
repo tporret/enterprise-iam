@@ -360,6 +360,12 @@ final class EnterpriseProvisioning {
 			return null;
 		}
 
+		static $cache = array();
+		$cache_key = $idp_id . '|' . $idp_uid;
+		if ( array_key_exists( $cache_key, $cache ) ) {
+			return $cache[ $cache_key ];
+		}
+
 		$users = get_users(
 			array(
 				'meta_query' => array(
@@ -378,7 +384,7 @@ final class EnterpriseProvisioning {
 			)
 		);
 
-		return ! empty( $users ) ? $users[0] : null;
+		return $cache[ $cache_key ] = ! empty( $users ) ? $users[0] : null;
 	}
 
 	/**
