@@ -29,7 +29,7 @@ final class CurrentSiteIdpManager {
 			$blog_id,
 			static function (): array {
 				if ( ! self::uses_network_control_plane() ) {
-					return IdpManager::all();
+					return self::site_idp_store()->all();
 				}
 
 				$assignment = SiteAssignmentManager::read_for_current_site();
@@ -38,7 +38,7 @@ final class CurrentSiteIdpManager {
 				}
 
 				$network_idps = array();
-				foreach ( NetworkIdpManager::all() as $idp ) {
+				foreach ( self::network_idp_store()->all() as $idp ) {
 					$network_idps[ (string) ( $idp['id'] ?? '' ) ] = $idp;
 				}
 
@@ -112,5 +112,13 @@ final class CurrentSiteIdpManager {
 		} finally {
 			restore_current_blog();
 		}
+	}
+
+	private static function site_idp_store(): IdpRepositoryManager {
+		return new IdpRepositoryManager( new SiteIdpAdapter() );
+	}
+
+	private static function network_idp_store(): IdpRepositoryManager {
+		return new IdpRepositoryManager( new NetworkIdpAdapter(), 'network' );
 	}
 }

@@ -10,9 +10,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class EffectiveSettingsResolver {
 
-	private const OPTION_KEY = 'enterprise_auth_settings';
-	private const NETWORK_DEFAULTS_OPTION_KEY = 'enterprise_auth_network_defaults';
-	private const NETWORK_POLICY_OPTION_KEY = 'enterprise_auth_network_policy';
 	private const BOOLEAN_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'private_content_login_required' );
 	private const NETWORK_DEFAULT_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'private_content_login_required', 'role_ceiling', 'session_timeout' );
 
@@ -64,40 +61,21 @@ final class EffectiveSettingsResolver {
 	}
 
 	public static function resolve(): array {
-		if ( self::uses_network_settings() ) {
-			return self::resolve_network_settings();
+		$settings_source = self::settings_source();
+
+		if ( $settings_source->usesNetworkSettings() ) {
+			return self::resolve_network_settings( $settings_source );
 		}
 
-		return self::resolve_single_site_settings();
+		return self::resolve_single_site_settings( $settings_source );
 	}
 
 	public static function read_network_defaults(): array {
-		$raw = get_site_option( self::NETWORK_DEFAULTS_OPTION_KEY, array() );
-
-		if ( ! is_array( $raw ) ) {
-			$raw = array();
-		}
-
-		$defaults = self::sanitize_settings_payload( $raw, self::DEFAULTS, false );
-
-		return array(
-			'lockdown_mode' => (bool) $defaults['lockdown_mode'],
-			'app_passwords' => (bool) $defaults['app_passwords'],
-			'require_device_bound_authenticators' => (bool) $defaults['require_device_bound_authenticators'],
-			'private_content_login_required' => (bool) $defaults['private_content_login_required'],
-			'role_ceiling' => (string) $defaults['role_ceiling'],
-			'session_timeout' => (int) $defaults['session_timeout'],
-		);
+		return self::read_network_defaults_from_source( self::settings_source() );
 	}
 
 	public static function read_network_policy(): array {
-		$raw = get_site_option( self::NETWORK_POLICY_OPTION_KEY, array() );
-
-		if ( ! is_array( $raw ) ) {
-			$raw = array();
-		}
-
-		return self::sanitize_network_policy( $raw );
+		return self::read_network_policy_from_source( self::settings_source() );
 	}
 
 	public static function read_network_settings_payload(): array {
@@ -108,33 +86,7 @@ final class EffectiveSettingsResolver {
 	}
 
 	public static function read_local_settings(): array {
-		$raw = get_option( self::OPTION_KEY, array() );
-
-		if ( ! is_array( $raw ) ) {
-			$raw = array();
-		}
-
-		$local = array();
-		foreach ( self::BOOLEAN_KEYS as $key ) {
-			if ( array_key_exists( $key, $raw ) ) {
-				$local[ $key ] = (bool) $raw[ $key ];
-			}
-		}
-
-		if ( isset( $raw['role_ceiling'] ) && in_array( $raw['role_ceiling'], self::ALLOWED_CEILINGS, true ) ) {
-			$local['role_ceiling'] = $raw['role_ceiling'];
-		}
-
-		if ( isset( $raw['session_timeout'] ) && in_array( (int) $raw['session_timeout'], self::ALLOWED_TIMEOUTS, true ) ) {
-			$local['session_timeout'] = (int) $raw['session_timeout'];
-		}
-
-		if ( array_key_exists( 'deprovision_steward_user_id', $raw ) ) {
-			$candidate = absint( $raw['deprovision_steward_user_id'] );
-			$local['deprovision_steward_user_id'] = self::is_valid_steward_user_id( $candidate ) ? $candidate : 0;
-		}
-
-		return $local;
+		return self::read_local_settings_from_source( self::settings_source() );
 	}
 
 	public static function sanitize_settings_payload( array $params, array $fallback, bool $include_deprovision ): array {
@@ -208,8 +160,8 @@ final class EffectiveSettingsResolver {
 		return (int) $raw['deprovision_steward_user_id'];
 	}
 
-	private static function resolve_single_site_settings(): array {
-		$local_settings  = self::read_local_settings();
+	private static function resolve_single_site_settings( SettingsSourceInterface $settings_source ): array {
+		$local_settings  = self::read_local_settings_from_source( $settings_source );
 		$steward_user_id = self::read_deprovision_steward_user_id();
 		$meta            = array();
 
@@ -242,10 +194,10 @@ final class EffectiveSettingsResolver {
 		);
 	}
 
-	private static function resolve_network_settings(): array {
-		$network_defaults = self::read_network_defaults();
-		$network_policy   = self::read_network_policy();
-		$local_settings   = self::read_local_settings();
+	private static function resolve_network_settings( SettingsSourceInterface $settings_source ): array {
+		$network_defaults = self::read_network_defaults_from_source( $settings_source );
+		$network_policy   = self::read_network_policy_from_source( $settings_source );
+		$local_settings   = self::read_local_settings_from_source( $settings_source );
 		$values           = array();
 		$meta             = array();
 
@@ -381,5 +333,56 @@ final class EffectiveSettingsResolver {
 		}
 
 		return $options;
+	}
+
+	private static function settings_source(): SettingsSourceInterface {
+		if ( self::uses_network_settings() ) {
+			return new NetworkSettingsSourceAdapter();
+		}
+
+		return new SiteSettingsSourceAdapter();
+	}
+
+	private static function read_network_defaults_from_source( SettingsSourceInterface $settings_source ): array {
+		$defaults = self::sanitize_settings_payload( $settings_source->readNetworkDefaultsRaw(), self::DEFAULTS, false );
+
+		return array(
+			'lockdown_mode' => (bool) $defaults['lockdown_mode'],
+			'app_passwords' => (bool) $defaults['app_passwords'],
+			'require_device_bound_authenticators' => (bool) $defaults['require_device_bound_authenticators'],
+			'private_content_login_required' => (bool) $defaults['private_content_login_required'],
+			'role_ceiling' => (string) $defaults['role_ceiling'],
+			'session_timeout' => (int) $defaults['session_timeout'],
+		);
+	}
+
+	private static function read_network_policy_from_source( SettingsSourceInterface $settings_source ): array {
+		return self::sanitize_network_policy( $settings_source->readNetworkPolicyRaw() );
+	}
+
+	private static function read_local_settings_from_source( SettingsSourceInterface $settings_source ): array {
+		$raw = $settings_source->readLocalSettingsRaw();
+
+		$local = array();
+		foreach ( self::BOOLEAN_KEYS as $key ) {
+			if ( array_key_exists( $key, $raw ) ) {
+				$local[ $key ] = (bool) $raw[ $key ];
+			}
+		}
+
+		if ( isset( $raw['role_ceiling'] ) && in_array( $raw['role_ceiling'], self::ALLOWED_CEILINGS, true ) ) {
+			$local['role_ceiling'] = $raw['role_ceiling'];
+		}
+
+		if ( isset( $raw['session_timeout'] ) && in_array( (int) $raw['session_timeout'], self::ALLOWED_TIMEOUTS, true ) ) {
+			$local['session_timeout'] = (int) $raw['session_timeout'];
+		}
+
+		if ( array_key_exists( 'deprovision_steward_user_id', $raw ) ) {
+			$candidate = absint( $raw['deprovision_steward_user_id'] );
+			$local['deprovision_steward_user_id'] = self::is_valid_steward_user_id( $candidate ) ? $candidate : 0;
+		}
+
+		return $local;
 	}
 }

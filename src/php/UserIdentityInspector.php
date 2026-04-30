@@ -14,6 +14,11 @@ final class UserIdentityInspector {
 	 * @var array<int, array<string, array<string, mixed>>>
 	 */
 	private array $provider_map_cache = array();
+	private UserIdentityRepository $identity_repository;
+
+	public function __construct( ?UserIdentityRepository $identity_repository = null ) {
+		$this->identity_repository = $identity_repository ?? new UserIdentityRepository();
+	}
 
 	/**
 	 * Inspect one user in the current or provided site context.
@@ -106,22 +111,7 @@ final class UserIdentityInspector {
 	 * @return array<string, mixed>
 	 */
 	private function read_site_state( int $user_id, int $blog_id ): array {
-		return $this->with_blog(
-			$blog_id,
-			static function () use ( $user_id ): array {
-				return array(
-					'provider_id' => (string) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true ),
-					'idp_uid' => (string) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true ),
-					'issuer' => (string) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), true ),
-					'scim_external_id' => (string) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), true ),
-					'suspended_site' => 'true' === get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), true ),
-					'suspended_network' => 'true' === get_user_meta( $user_id, SiteMetaKeys::NETWORK_SCIM_SUSPENDED, true ),
-					'last_sso_login_at' => (int) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ), true ),
-					'session_expires_at' => (int) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ), true ),
-					'step_up_required' => (bool) get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::PASSKEY_STEP_UP_REQUIRED ), true ),
-				);
-			}
-		);
+		return $this->with_blog( $blog_id, fn(): array => $this->identity_repository->readStateSnapshot( $user_id ) );
 	}
 
 	/**

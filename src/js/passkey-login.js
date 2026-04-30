@@ -7,37 +7,16 @@
  * Step 2: Password form (native WP) and/or WebAuthn ceremony.
  */
 import './passkey-login.css';
+import { LoginStateMachine } from './login-state-machine';
+import { base64urlToBuffer, bufferToBase64url } from './webauthn-encoding';
 
 ( function () {
 	'use strict';
 
 	var config = window.eaPasskeyLogin || {};
-	var inStep1 = true;
+	var stateMachine = LoginStateMachine();
 
 	// ── Helpers ──────────────────────────────────────────────────────────
-
-	function bufferToBase64url( buffer ) {
-		var bytes = new Uint8Array( buffer );
-		var binary = '';
-		for ( var i = 0; i < bytes.length; i++ ) {
-			binary += String.fromCharCode( bytes[ i ] );
-		}
-		return btoa( binary )
-			.replace( /\+/g, '-' )
-			.replace( /\//g, '_' )
-			.replace( /=+$/g, '' );
-	}
-
-	function base64urlToBuffer( str ) {
-		var base64 = str.replace( /-/g, '+' ).replace( /_/g, '/' );
-		var padded = base64 + '='.repeat( ( 4 - ( base64.length % 4 ) ) % 4 );
-		var binary = atob( padded );
-		var bytes = new Uint8Array( binary.length );
-		for ( var i = 0; i < binary.length; i++ ) {
-			bytes[ i ] = binary.charCodeAt( i );
-		}
-		return bytes.buffer;
-	}
 
 	function setStatus( elId, msg, isError ) {
 		var el = document.getElementById( elId );
@@ -115,7 +94,7 @@ import './passkey-login.css';
 
 		// Intercept form submit in step 1 so Enter key triggers our routing
 		form.addEventListener( 'submit', function ( e ) {
-			if ( inStep1 ) {
+			if ( 'email_entry' === stateMachine.getState().step ) {
 				e.preventDefault();
 				var routeBtn = document.getElementById( 'ea-route-btn' );
 				if ( routeBtn ) {
@@ -125,19 +104,37 @@ import './passkey-login.css';
 		} );
 	}
 
-	function transitionToStep2( email ) {
-		inStep1 = false;
+	function renderForCurrentState( email ) {
+		var state = stateMachine.getState();
+		var isEmailEntry = 'email_entry' === state.step;
 
-		// Hide Continue, show password/submit/passkey
+		// Show/hide sections according to state machine output.
 		if ( stepContinue ) {
-			stepContinue.style.display = 'none';
+			stepContinue.style.display = isEmailEntry ? '' : 'none';
 		}
 		step2Els.forEach( function ( el ) {
-			el.style.display = 'block';
+			el.style.display = isEmailEntry ? 'none' : 'block';
 		} );
 
+		if ( isEmailEntry ) {
+			if ( stepPasskey ) {
+				stepPasskey.style.display = 'none';
+			}
+			if ( backLink ) {
+				backLink.style.display = 'none';
+			}
+			setStatus( 'ea-route-status', '', false );
+			var routeBtn = document.getElementById( 'ea-route-btn' );
+			if ( routeBtn ) {
+				routeBtn.disabled = false;
+			}
+			userLogin.value = '';
+			userLogin.focus();
+			return;
+		}
+
 		// Reorder: move remember-me and Log In button above the passkey
-		// section so the layout is: password → login → divider → passkey.
+		// section so the layout is: password -> login -> divider -> passkey.
 		if ( stepPasskey ) {
 			[ forgetMe, submitP ].forEach( function ( el ) {
 				if ( el && el.parentNode ) {
@@ -146,7 +143,6 @@ import './passkey-login.css';
 			} );
 		}
 
-		// Show passkey button (only if WebAuthn is supported)
 		if ( stepPasskey && window.PublicKeyCredential ) {
 			stepPasskey.style.display = '';
 		}
@@ -154,8 +150,7 @@ import './passkey-login.css';
 			backLink.style.display = '';
 		}
 
-		// Ensure email is in the username field and focus password
-		userLogin.value = email;
+		userLogin.value = email || userLogin.value;
 		var passField = document.getElementById( 'user_pass' );
 		if ( passField ) {
 			passField.disabled = false;
@@ -163,30 +158,14 @@ import './passkey-login.css';
 		}
 	}
 
+	function transitionToStep2( email ) {
+		stateMachine.dispatch( { type: 'ROUTE_TO_LOCAL' } );
+		renderForCurrentState( email );
+	}
+
 	function transitionToStep1() {
-		inStep1 = true;
-
-		// Show Continue, hide password/submit/passkey
-		if ( stepContinue ) {
-			stepContinue.style.display = '';
-		}
-		step2Els.forEach( function ( el ) {
-			el.style.display = 'none';
-		} );
-		if ( stepPasskey ) {
-			stepPasskey.style.display = 'none';
-		}
-		if ( backLink ) {
-			backLink.style.display = 'none';
-		}
-
-		setStatus( 'ea-route-status', '', false );
-		var routeBtn = document.getElementById( 'ea-route-btn' );
-		if ( routeBtn ) {
-			routeBtn.disabled = false;
-		}
-		userLogin.value = '';
-		userLogin.focus();
+		stateMachine.dispatch( { type: 'BACK_TO_EMAIL_ENTRY' } );
+		renderForCurrentState();
 	}
 
 	// ── Step 1: Email routing ───────────────────────────────────────────
@@ -292,6 +271,7 @@ import './passkey-login.css';
 		}
 
 		btn.addEventListener( 'click', function () {
+			stateMachine.dispatch( { type: 'START_PASSKEY' } );
 			btn.disabled = true;
 			setStatus( 'ea-passkey-status', 'Waiting for passkey…', false );
 
@@ -377,18 +357,22 @@ import './passkey-login.css';
 				} )
 				.then( function ( result ) {
 					if ( result.success ) {
+						stateMachine.dispatch( { type: 'PASSKEY_SUCCESS' } );
 						setStatus( 'ea-passkey-status', 'Success! Redirecting…', false );
 						window.location.href =
 							result.redirect_to || '/wp-admin/';
 					} else {
+						stateMachine.dispatch( { type: 'PASSKEY_FAILURE' } );
 						setStatus( 'ea-passkey-status', result.error || 'Login failed.', true );
 						btn.disabled = false;
 					}
 				} )
 				.catch( function ( err ) {
 					if ( err.name === 'NotAllowedError' ) {
+						stateMachine.dispatch( { type: 'PASSKEY_CANCELLED' } );
 						setStatus( 'ea-passkey-status', 'Passkey login was cancelled.', true );
 					} else {
+						stateMachine.dispatch( { type: 'PASSKEY_FAILURE' } );
 						setStatus( 'ea-passkey-status', err.message || 'Login failed.', true );
 					}
 					btn.disabled = false;
@@ -406,6 +390,7 @@ import './passkey-login.css';
 	document.addEventListener( 'DOMContentLoaded', function () {
 		cacheDom();
 		setupStep1();
+		renderForCurrentState();
 		initRouting();
 		initPasskey();
 		resumeLocalFlow();

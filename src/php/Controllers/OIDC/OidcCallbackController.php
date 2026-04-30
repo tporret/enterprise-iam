@@ -14,6 +14,7 @@ use EnterpriseAuth\Plugin\FederationErrorHandler;
 use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\IdpManager;
 use EnterpriseAuth\Plugin\OidcTransientClient;
+use Jumbojett\OpenIDConnectClientException;
 
 /**
  * OIDC Authorization Code Callback.
@@ -28,6 +29,7 @@ final class OidcCallbackController {
 
 	private const NAMESPACE = 'enterprise-auth/v1';
 	private const PUBLIC_ERROR_CODE = 'federation_failed';
+	private const DEBUG_PREFIX = '[DEBUG-fed-oidc]';
 	private string $last_error_reference = '';
 
 	public function register_routes(): void {
@@ -80,9 +82,17 @@ final class OidcCallbackController {
 			if ( '' !== $state ) {
 				$state_data = $this->consume_state( $state );
 				if ( is_wp_error( $state_data ) ) {
+					$signal = 'oidc_provider_error_state_validation_failed';
+					if ( 'ea_oidc_state_mismatch' === $state_data->get_error_code() ) {
+						$signal = 'oidc_state_mismatch';
+					}
+
 					$this->log_detailed_error(
-						$state_data->get_error_message(),
-						array( 'phase' => 'provider_error_state_validation' )
+						$this->diagnostic_detail( $signal, $state_data->get_error_message() ),
+						array(
+							'phase'       => 'provider_error_state_validation',
+							'diag_signal' => $signal,
+						)
 					);
 					return $this->error_redirect();
 				}
@@ -98,19 +108,39 @@ final class OidcCallbackController {
 			}
 
 			$log_context['phase'] = 'provider_error';
-			$this->log_detailed_error( $message, $log_context );
+			$this->log_detailed_error(
+				$this->diagnostic_detail( 'oidc_provider_error', $message ),
+				$log_context + array( 'diag_signal' => 'oidc_provider_error' )
+			);
 			return $this->error_redirect();
 		}
 
 		if ( empty( $code ) || empty( $state ) ) {
-			$this->log_detailed_error( 'Missing authorization code or state.', array( 'phase' => 'parameter_validation' ) );
+			$this->log_detailed_error(
+				$this->diagnostic_detail( 'oidc_missing_code_or_state', 'Missing authorization code or state.' ),
+				array(
+					'phase'       => 'parameter_validation',
+					'diag_signal' => 'oidc_missing_code_or_state',
+				)
+			);
 			return $this->error_redirect();
 		}
 
 		// ── Validate state (CSRF protection) ────────────────────────────
 		$state_data = $this->consume_state( $state );
 		if ( is_wp_error( $state_data ) ) {
-			$this->log_detailed_error( $state_data->get_error_message(), array( 'phase' => 'state_validation' ) );
+			$signal = 'oidc_state_validation_failed';
+			if ( 'ea_oidc_state_mismatch' === $state_data->get_error_code() ) {
+				$signal = 'oidc_state_mismatch';
+			}
+
+			$this->log_detailed_error(
+				$this->diagnostic_detail( $signal, $state_data->get_error_message() ),
+				array(
+					'phase'       => 'state_validation',
+					'diag_signal' => $signal,
+				)
+			);
 			return $this->error_redirect();
 		}
 
@@ -125,8 +155,14 @@ final class OidcCallbackController {
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'oidc' || '' === $nonce || '' === $code_verifier ) {
 			$this->log_detailed_error(
-				'OIDC callback could not resolve a valid IdP or PKCE state.',
-				$log_context + array( 'phase' => 'idp_resolution' )
+				$this->diagnostic_detail(
+					'oidc_idp_or_pkce_resolution_failed',
+					'OIDC callback could not resolve a valid IdP or PKCE state.'
+				),
+				$log_context + array(
+					'phase'       => 'idp_resolution',
+					'diag_signal' => 'oidc_idp_or_pkce_resolution_failed',
+				)
 			);
 			return $this->error_redirect();
 		}
@@ -136,8 +172,11 @@ final class OidcCallbackController {
 			$runtime_validation = IdpManager::validate_runtime_oidc_configuration( $idp );
 			if ( is_wp_error( $runtime_validation ) ) {
 				$this->log_detailed_error(
-					$runtime_validation->get_error_message(),
-					$log_context + array( 'phase' => 'runtime_validation' )
+					$this->diagnostic_detail( 'oidc_runtime_validation_failed', $runtime_validation->get_error_message() ),
+					$log_context + array(
+						'phase'       => 'runtime_validation',
+						'diag_signal' => 'oidc_runtime_validation_failed',
+					)
 				);
 				return $this->error_redirect();
 			}
@@ -216,8 +255,11 @@ final class OidcCallbackController {
 
 			if ( empty( $email ) || ! is_email( $email ) ) {
 				$this->log_detailed_error(
-					'No valid email address was present in OIDC claims.',
-					$log_context + array( 'phase' => 'claim_validation' )
+					$this->diagnostic_detail( 'oidc_missing_valid_email', 'No valid email address was present in OIDC claims.' ),
+					$log_context + array(
+						'phase'       => 'claim_validation',
+						'diag_signal' => 'oidc_missing_valid_email',
+					)
 				);
 				return $this->error_redirect();
 			}
@@ -243,8 +285,14 @@ final class OidcCallbackController {
 			$token_issuer      = rtrim( (string) $iss, '/' );
 			if ( '' !== $configured_issuer && '' !== $token_issuer && $configured_issuer !== $token_issuer ) {
 				$this->log_detailed_error(
-					'OIDC issuer mismatch: token issuer did not match the configured IdP.',
-					$log_context + array( 'phase' => 'issuer_validation' )
+					$this->diagnostic_detail(
+						'oidc_issuer_mismatch',
+						'OIDC issuer mismatch: token issuer did not match the configured IdP.'
+					),
+					$log_context + array(
+						'phase'       => 'issuer_validation',
+						'diag_signal' => 'oidc_issuer_mismatch',
+					)
 				);
 				return $this->error_redirect();
 			}
@@ -265,21 +313,41 @@ final class OidcCallbackController {
 
 			if ( is_wp_error( $result ) ) {
 				$this->log_detailed_error(
-					$result->get_error_message(),
-					$log_context + array( 'phase' => 'provisioning' )
+					$this->diagnostic_detail( 'oidc_provisioning_failed', $result->get_error_message() ),
+					$log_context + array(
+						'phase'       => 'provisioning',
+						'diag_signal' => 'oidc_provisioning_failed',
+					)
 				);
 				return $this->error_redirect();
 			}
 
 			return $this->success_redirect();
+		} catch ( OpenIDConnectClientException $e ) {
+			$this->log_detailed_error(
+				$this->diagnostic_detail( 'oidc_token_exchange_failed', 'OIDC token exchange or token validation failed.' ),
+				$log_context + array(
+					'phase'       => 'token_exchange',
+					'diag_signal' => 'oidc_token_exchange_failed',
+				),
+				$e
+			);
+			return $this->error_redirect();
 		} catch ( \Throwable $e ) {
 			$this->log_detailed_error(
-				'Unhandled exception during OIDC callback processing.',
-				$log_context + array( 'phase' => 'callback_exception' ),
+				$this->diagnostic_detail( 'oidc_callback_exception', 'Unhandled exception during OIDC callback processing.' ),
+				$log_context + array(
+					'phase'       => 'callback_exception',
+					'diag_signal' => 'oidc_callback_exception',
+				),
 				$e
 			);
 			return $this->error_redirect();
 		}
+	}
+
+	private function diagnostic_detail( string $signal, string $detail ): string {
+		return self::DEBUG_PREFIX . ' [' . sanitize_key( $signal ) . '] ' . $detail;
 	}
 
 	/**

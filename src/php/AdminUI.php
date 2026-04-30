@@ -195,6 +195,20 @@ final class AdminUI {
 					'isNetworkManagedSite' => ! is_network_admin() && CurrentSiteIdpManager::uses_network_control_plane(),
 					'idpManagementScope'  => CurrentSiteIdpManager::uses_network_control_plane() ? 'network' : 'site',
 					'blogId'              => get_current_blog_id(),
+					'guideLinks'          => array(
+						array(
+							'label' => __( 'Entra ID SAML Guide', 'enterprise-auth' ),
+							'url'   => esc_url_raw( ENTERPRISE_AUTH_URL . 'docs/customer-guides/Entra-ID-SAML-Setup.md' ),
+						),
+						array(
+							'label' => __( 'Okta OIDC & SCIM Guide', 'enterprise-auth' ),
+							'url'   => esc_url_raw( ENTERPRISE_AUTH_URL . 'docs/customer-guides/Okta-OIDC-SCIM-Setup.md' ),
+						),
+						array(
+							'label' => __( 'SSO Troubleshooting', 'enterprise-auth' ),
+							'url'   => esc_url_raw( ENTERPRISE_AUTH_URL . 'docs/customer-guides/Troubleshooting-SSO.md' ),
+						),
+					),
 				),
 				$context
 			)

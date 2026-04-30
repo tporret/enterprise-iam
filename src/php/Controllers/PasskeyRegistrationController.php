@@ -10,11 +10,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\CredentialRepository;
 use EnterpriseAuth\Plugin\OneTimeTransient;
+use EnterpriseAuth\Plugin\PasskeyEnrollmentValidator;
 use EnterpriseAuth\Plugin\WebAuthnHelper;
-use Webauthn\AuthenticatorAttestationResponse;
-use Webauthn\PublicKeyCredential;
 use Webauthn\PublicKeyCredentialCreationOptions;
-use Webauthn\PublicKeyCredentialDescriptor;
 use Webauthn\PublicKeyCredentialParameters;
 use Webauthn\PublicKeyCredentialUserEntity;
 use Webauthn\AuthenticatorSelectionCriteria;
@@ -32,6 +30,11 @@ final class PasskeyRegistrationController {
 	private const TRANSIENT     = 'ea_webauthn_reg_';
 	private const CHALLENGE_TTL = 60; // seconds
 	private const USER_HANDLE_META = '_enterprise_auth_webauthn_user_handle';
+	private PasskeyEnrollmentValidator $enrollment_validator;
+
+	public function __construct( ?PasskeyEnrollmentValidator $enrollment_validator = null ) {
+		$this->enrollment_validator = $enrollment_validator ?? new PasskeyEnrollmentValidator();
+	}
 
 	public function register_routes(): void {
 		register_rest_route(
@@ -149,57 +152,23 @@ final class PasskeyRegistrationController {
 			);
 		}
 
-		$serializer = WebAuthnHelper::serializer();
-
 		/** @var PublicKeyCredentialCreationOptions $creation_options */
-		$creation_options = $serializer->deserialize(
+		$creation_options = WebAuthnHelper::serializer()->deserialize(
 			$options_json,
 			PublicKeyCredentialCreationOptions::class,
 			'json'
 		);
 
-		// Deserialize the browser's attestation response.
-		$body = $request->get_body();
+		$validation = $this->enrollment_validator->validateEnrollment(
+			$creation_options,
+			$request->get_body()
+		);
 
-		try {
-			/** @var PublicKeyCredential $pkc */
-			$pkc = $serializer->deserialize( $body, PublicKeyCredential::class, 'json' );
-		} catch ( \Throwable $e ) {
-			return $this->error_response(
-				'invalid_attestation_payload',
-				'The browser returned an invalid passkey attestation payload. Try again from a current browser on a managed device.'
-			);
+		if ( ! $validation['success'] ) {
+			return $this->error_response( $validation['code'], $validation['message'] );
 		}
 
-		$response = $pkc->response;
-		if ( ! $response instanceof AuthenticatorAttestationResponse ) {
-			return $this->error_response(
-				'invalid_attestation_response',
-				'The browser did not return a valid passkey attestation response.'
-			);
-		}
-
-		try {
-			$credential_source = WebAuthnHelper::attestation_validator()->check(
-				$response,
-				$creation_options,
-				WebAuthnHelper::rp_id(),
-			);
-			WebAuthnHelper::enforce_attestation_policy( $credential_source );
-			\EnterpriseAuth\Plugin\PasskeyPolicy::enforce_device_bound_registration_policy( $credential_source );
-		} catch ( \Throwable $e ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( 'Enterprise IAM – Passkey registration error: ' . $e->getMessage() );
-			}
-
-			$registration_error = $this->registration_error( $e );
-
-			return $this->error_response(
-				$registration_error['code'],
-				$registration_error['message']
-			);
-		}
+		$credential_source = $validation['credential_source'];
 
 		// Persist the credential.
 		CredentialRepository::save(
@@ -244,47 +213,4 @@ final class PasskeyRegistrationController {
 		);
 	}
 
-	/**
-	 * @return array{code: string, message: string}
-	 */
-	private function registration_error( \Throwable $error ): array {
-		if ( $error instanceof \EnterpriseAuth\Plugin\AttestationPolicyException ) {
-			return array(
-				'code' => $error->policy_code(),
-				'message' => $error->user_message(),
-			);
-		}
-
-		$message = $error->getMessage();
-
-		if (
-			str_contains( $message, 'certificate trust path' )
-			|| str_contains( $message, 'direct certificate-backed attestation' )
-			|| str_contains( $message, 'pinned authenticator identity' )
-		) {
-			return array(
-				'code' => 'attestation_policy_rejected',
-				'message' => 'This passkey does not provide the enterprise attestation required for enrollment. Use the built-in platform authenticator on a managed Safari device, not a roaming key or a non-verifiable passkey flow.',
-			);
-		}
-
-		if ( str_contains( $message, 'local trust bundle' ) ) {
-			return array(
-				'code' => 'trust_bundle_mismatch',
-				'message' => 'This platform authenticator is not in the current enterprise trust bundle. Launch support is limited to the current managed platform authenticator policy and does not include relaxed browser fallback paths.',
-			);
-		}
-
-		if ( str_contains( $message, 'device-bound passkey' ) || str_contains( $message, 'Synced backup-eligible passkeys' ) ) {
-			return array(
-				'code' => 'credential_sync_not_permitted',
-				'message' => 'Your organization requires a device-bound passkey on this managed device. Synced passkeys are not permitted.',
-			);
-		}
-
-		return array(
-			'code' => 'unsupported_authenticator',
-			'message' => 'Passkey registration failed because the authenticator did not meet the current enterprise policy. Review the passkey requirements on this page and try again from a supported managed device.',
-		);
-	}
 }

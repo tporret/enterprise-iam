@@ -15,6 +15,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class SecurityManager {
 
+	private SsoAccountPolicy $sso_account_policy;
+
+	public function __construct( ?SsoAccountPolicy $sso_account_policy = null ) {
+		$this->sso_account_policy = $sso_account_policy ?? new SsoAccountPolicy();
+	}
+
 	public function init(): void {
 		$this->disable_xmlrpc();
 		$this->lockdown_rest_api();
@@ -152,33 +158,6 @@ final class SecurityManager {
 	// ── SSO-Only Account Lockdown ───────────────────────────────────────────
 
 	/**
-	 * Check whether a user is SSO-bound (managed by an IdP or SCIM).
-	 *
-	 * User ID 1 (break-glass admin) is always excluded.
-	 */
-	private static function is_sso_bound( int $user_id ): bool {
-		if ( 1 === $user_id ) {
-			return false;
-		}
-
-		if ( 'true' === get_user_meta( $user_id, SiteMetaKeys::NETWORK_SCIM_SUSPENDED, true ) ) {
-			return true;
-		}
-
-		$idp_uid = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );
-		if ( '' !== $idp_uid ) {
-			return true;
-		}
-
-		$scim_id = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), true );
-		if ( '' !== $scim_id ) {
-			return true;
-		}
-
-		return false;
-	}
-
-	/**
 	 * Block local password login for SSO-bound users.
 	 *
 	 * Hooks at priority 20 (after wp_authenticate_username_password at 20)
@@ -186,9 +165,11 @@ final class SecurityManager {
 	 * wp_authenticate entirely or go through separate flows.
 	 */
 	private function block_sso_password_login(): void {
+		$policy = $this->sso_account_policy;
+
 		add_filter(
 			'authenticate',
-			static function ( $user, string $username, string $password ) {
+			static function ( $user, string $username, string $password ) use ( $policy ) {
 				if ( ! ( $user instanceof \WP_User ) ) {
 					return $user;
 				}
@@ -198,7 +179,7 @@ final class SecurityManager {
 					return $user;
 				}
 
-				if ( self::is_sso_bound( $user->ID ) ) {
+				if ( ! $policy->canUseLocalPasswordLogin( $user ) ) {
 					return new \WP_Error(
 						'sso_only_account',
 						__( 'This account is managed by your organization. Please use Single Sign-On to log in.', 'enterprise-auth' )
@@ -216,10 +197,13 @@ final class SecurityManager {
 	 * Block password reset (Lost Password) for SSO-bound users.
 	 */
 	private function block_sso_password_reset(): void {
+		$policy = $this->sso_account_policy;
+
 		add_filter(
 			'allow_password_reset',
-			static function ( bool $allow, int $user_id ) {
-				if ( self::is_sso_bound( $user_id ) ) {
+			static function ( bool $allow, int $user_id ) use ( $policy ) {
+				$user = get_userdata( $user_id );
+				if ( $user instanceof \WP_User && ! $policy->canResetPassword( $user ) ) {
 					return false;
 				}
 				return $allow;
@@ -230,12 +214,12 @@ final class SecurityManager {
 
 		add_action(
 			'lostpassword_post',
-			static function ( \WP_Error $errors, $user_data ): void {
+			static function ( \WP_Error $errors, $user_data ) use ( $policy ): void {
 				if ( $errors->has_errors() || ! ( $user_data instanceof \WP_User ) ) {
 					return;
 				}
 
-				if ( ! self::is_sso_bound( $user_data->ID ) ) {
+				if ( $policy->canResetPassword( $user_data ) ) {
 					return;
 				}
 
@@ -247,12 +231,12 @@ final class SecurityManager {
 
 		add_action(
 			'validate_password_reset',
-			static function ( \WP_Error $errors, $user ): void {
+			static function ( \WP_Error $errors, $user ) use ( $policy ): void {
 				if ( ! ( $user instanceof \WP_User ) ) {
 					return;
 				}
 
-				if ( ! self::is_sso_bound( $user->ID ) ) {
+				if ( $policy->canResetPassword( $user ) ) {
 					return;
 				}
 
@@ -325,19 +309,21 @@ final class SecurityManager {
 	 * both enforce the restriction and communicate it in the UI.
 	 */
 	private function block_sso_email_change(): void {
+		$policy = $this->sso_account_policy;
+
 		// Block email changes during profile save.
 		add_action(
 			'user_profile_update_errors',
-			static function ( \WP_Error $errors, bool $update, \stdClass $user ) {
+			static function ( \WP_Error $errors, bool $update, \stdClass $user ) use ( $policy ) {
 				if ( ! $update || empty( $user->ID ) ) {
 					return;
 				}
 
-				if ( ! self::is_sso_bound( (int) $user->ID ) ) {
+				$existing = get_userdata( (int) $user->ID );
+				if ( ! ( $existing instanceof \WP_User ) || $policy->canMutateProfile( $existing ) ) {
 					return;
 				}
 
-				$existing = get_userdata( (int) $user->ID );
 				if ( $existing && isset( $user->user_email ) && $user->user_email !== $existing->user_email ) {
 					$errors->add(
 						'sso_email_locked',
@@ -352,8 +338,8 @@ final class SecurityManager {
 		);
 
 		// Make the email field read-only in the profile UI.
-		$render_readonly = static function ( \WP_User $user ): void {
-			if ( ! self::is_sso_bound( $user->ID ) ) {
+		$render_readonly = static function ( \WP_User $user ) use ( $policy ): void {
+			if ( $policy->canMutateProfile( $user ) ) {
 				return;
 			}
 			?>

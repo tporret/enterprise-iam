@@ -27,7 +27,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class IdpManager {
 
-	private const OPTION_KEY              = 'enterprise_auth_idps';
 	private const URL_FIELDS              = array(
 		'issuer',
 		'authorization_endpoint',
@@ -65,29 +64,7 @@ final class IdpManager {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public static function all(): array {
-		$all = self::all_raw();
-
-		// Decrypt client_secret for runtime use.
-		foreach ( $all as &$idp ) {
-			if ( isset( $idp['client_secret'] ) ) {
-				$idp['client_secret'] = Encryption::decrypt( $idp['client_secret'] );
-			}
-		}
-		unset( $idp );
-
-		return $all;
-	}
-
-	/**
-	 * Return all IdP configurations without decrypting secrets.
-	 *
-	 * Used internally by save() to avoid double-encrypting.
-	 *
-	 * @return array<int, array<string, mixed>>
-	 */
-	private static function all_raw(): array {
-		$raw = get_option( self::OPTION_KEY, array() );
-		return is_array( $raw ) ? $raw : array();
+		return self::repository_manager()->all();
 	}
 
 	/**
@@ -96,12 +73,7 @@ final class IdpManager {
 	 * @return array<string, mixed>|null
 	 */
 	public static function find( string $id ): ?array {
-		foreach ( self::all() as $idp ) {
-			if ( ( $idp['id'] ?? '' ) === $id ) {
-				return $idp;
-			}
-		}
-		return null;
+		return self::repository_manager()->find( $id );
 	}
 
 	/**
@@ -110,19 +82,7 @@ final class IdpManager {
 	 * @return array<string, mixed>|null
 	 */
 	public static function find_by_domain( string $domain ): ?array {
-		$domain = strtolower( trim( $domain ) );
-
-		foreach ( self::all() as $idp ) {
-			if ( empty( $idp['enabled'] ) ) {
-				continue;
-			}
-			$domains = array_map( 'strtolower', (array) ( $idp['domain_mapping'] ?? array() ) );
-			if ( in_array( $domain, $domains, true ) ) {
-				return $idp;
-			}
-		}
-
-		return null;
+		return self::repository_manager()->findByDomain( $domain );
 	}
 
 	// ── Write ───────────────────────────────────────────────────────────────
@@ -134,62 +94,18 @@ final class IdpManager {
 	 * @return true|\WP_Error
 	 */
 	public static function save( array $idp ) {
-		try {
-			// Encrypt client_secret before persisting to the database.
-			if ( isset( $idp['client_secret'] ) && '' !== $idp['client_secret'] ) {
-				$idp['client_secret'] = Encryption::encrypt( $idp['client_secret'] );
-			}
-		} catch ( \RuntimeException $e ) {
-			$idp_id = sanitize_text_field( (string) ( $idp['id'] ?? '' ) );
-			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			error_log(
-				sprintf(
-					'CRITICAL: Enterprise IAM failed to encrypt client_secret for IdP "%s": %s',
-					$idp_id,
-					$e->getMessage()
-				)
-			);
-
-			return new \WP_Error(
-				'enterprise_auth_secret_storage_failed',
-				'Failed to save IdP configuration securely. Please contact your administrator.',
-				array( 'status' => 500 )
-			);
-		}
-
-		$all   = self::all_raw();
-		$found = false;
-
-		foreach ( $all as $i => $existing ) {
-			if ( ( $existing['id'] ?? '' ) === ( $idp['id'] ?? '' ) ) {
-				$all[ $i ] = $idp;
-				$found     = true;
-				break;
-			}
-		}
-
-		if ( ! $found ) {
-			$all[] = $idp;
-		}
-
-		update_option( self::OPTION_KEY, array_values( $all ) );
-
-		return true;
+		return self::repository_manager()->save( $idp );
 	}
 
 	/**
 	 * Delete an IdP configuration by id.
 	 */
 	public static function delete( string $id ): bool {
-		$all      = self::all_raw();
-		$filtered = array_filter( $all, static fn( array $idp ) => ( $idp['id'] ?? '' ) !== $id );
+		return self::repository_manager()->delete( $id );
+	}
 
-		if ( count( $filtered ) === count( $all ) ) {
-			return false;
-		}
-
-		update_option( self::OPTION_KEY, array_values( $filtered ) );
-		return true;
+	private static function repository_manager(): IdpRepositoryManager {
+		return new IdpRepositoryManager( new SiteIdpAdapter() );
 	}
 
 	// ── Sanitization ────────────────────────────────────────────────────────

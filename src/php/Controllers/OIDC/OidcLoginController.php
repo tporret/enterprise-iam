@@ -8,8 +8,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
+use EnterpriseAuth\Plugin\FederationFlowManager;
 use EnterpriseAuth\Plugin\IdpManager;
 
 /**
@@ -69,14 +69,6 @@ final class OidcLoginController {
 			// Set the redirect URI to our callback endpoint.
 			$redirect_uri = rest_url( 'enterprise-auth/v1/oidc/callback' );
 
-			// Generate cryptographic state and nonce for CSRF / replay protection.
-			$state = bin2hex( random_bytes( 16 ) );
-			$nonce = bin2hex( random_bytes( 16 ) );
-
-			// ── PKCE (RFC 7636) — S256 challenge ────────────────────
-			$code_verifier  = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
-			$code_challenge = rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' );
-
 			// Use the authorization endpoint from our IdP config directly,
 			// since getProviderConfigValue() is protected in the library.
 			$auth_endpoint = $idp['authorization_endpoint'] ?? '';
@@ -98,22 +90,10 @@ final class OidcLoginController {
 				);
 			}
 
-			$issued = FederationFlowGuard::issue(
-				'oidc',
-				$state,
-				array(
-					'idp_id'        => $idp_id,
-					'blog_id'       => get_current_blog_id(),
-					'state'         => $state,
-					'nonce'         => $nonce,
-					'code_verifier' => $code_verifier,
-				),
-				600
-			);
-
-			if ( is_wp_error( $issued ) ) {
+			$flow = FederationFlowManager::start_oidc_flow( (string) $idp_id, get_current_blog_id() );
+			if ( is_wp_error( $flow ) ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( 'Enterprise IAM – OIDC login error: ' . $issued->get_error_message() );
+				error_log( 'Enterprise IAM – OIDC login error: ' . $flow->get_error_message() );
 
 				return new \WP_REST_Response(
 					array( 'error' => 'Failed to initiate OIDC login. Please contact your administrator.' ),
@@ -126,9 +106,9 @@ final class OidcLoginController {
 				'client_id'             => $client_id,
 				'redirect_uri'          => $redirect_uri,
 				'scope'                 => 'openid email profile',
-				'state'                 => $state,
-				'nonce'                 => $nonce,
-				'code_challenge'        => $code_challenge,
+				'state'                 => $flow['state'],
+				'nonce'                 => $flow['nonce'],
+				'code_challenge'        => $flow['code_challenge'],
 				'code_challenge_method' => 'S256',
 			);
 

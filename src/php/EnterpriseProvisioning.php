@@ -97,9 +97,9 @@ final class EnterpriseProvisioning {
 			}
 
 			if ( '' !== $idp_issuer ) {
-				$stored_issuer = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), true );
+				$stored_issuer = self::identity_repository()->issuer( $user->ID );
 				if ( '' === $stored_issuer ) {
-					update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
+					self::identity_repository()->setIssuer( $user->ID, $idp_issuer );
 				} elseif ( $stored_issuer !== $idp_issuer ) {
 					return new \WP_Error(
 						'enterprise_provision',
@@ -129,7 +129,7 @@ final class EnterpriseProvisioning {
 		}
 
 		if ( '' !== $idp_uid ) {
-			$stored_uid = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), true );
+			$stored_uid = self::identity_repository()->idpUid( $user->ID );
 			if ( '' === $stored_uid ) {
 				self::clean_sweep_legacy_access( $user->ID );
 				self::bind_user_to_idp( $user->ID, $idp_id, $idp_uid, $idp_issuer );
@@ -166,7 +166,7 @@ final class EnterpriseProvisioning {
 			return $admin_check;
 		}
 
-		$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
+		$existing_provider = self::identity_repository()->providerId( $user->ID );
 
 		if ( empty( $existing_provider ) ) {
 			return new \WP_Error(
@@ -212,7 +212,7 @@ final class EnterpriseProvisioning {
 					return $admin_check;
 				}
 
-				$existing_provider = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
+				$existing_provider = self::identity_repository()->providerId( $user->ID );
 				if ( ! empty( $existing_provider ) && $existing_provider !== ( $idp['id'] ?? '' ) ) {
 					return new \WP_Error(
 						'enterprise_provision',
@@ -279,11 +279,11 @@ final class EnterpriseProvisioning {
 	}
 
 	private static function finalize_authenticated_session( \WP_User $user, array $idp, array $attributes, string $idp_issuer ): void {
-		update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_LOGIN_AT ), time() );
+		self::identity_repository()->touchSsoLogin( $user->ID, time() );
 
 		$session_expires = $attributes['session_not_on_or_after'] ?? 0;
 		if ( $session_expires > 0 ) {
-			update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SESSION_EXPIRES ), (int) $session_expires );
+			self::identity_repository()->setSessionExpires( $user->ID, (int) $session_expires );
 		}
 
 		$oidc_id_token = isset( $attributes['oidc_id_token'] ) && is_string( $attributes['oidc_id_token'] )
@@ -292,14 +292,14 @@ final class EnterpriseProvisioning {
 
 		if ( 'oidc' === ( $idp['protocol'] ?? '' ) && '' !== $oidc_id_token ) {
 			try {
-				update_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ), Encryption::encrypt( $oidc_id_token ) );
+				self::identity_repository()->storeOidcIdToken( $user->ID, Encryption::encrypt( $oidc_id_token ) );
 			} catch ( \RuntimeException $e ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 				error_log( 'Enterprise IAM – Failed to persist OIDC logout token hint: ' . $e->getMessage() );
-				delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
+				self::identity_repository()->clearOidcIdToken( $user->ID );
 			}
 		} else {
-			delete_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::OIDC_ID_TOKEN ) );
+			self::identity_repository()->clearOidcIdToken( $user->ID );
 		}
 
 		wp_set_auth_cookie( $user->ID, false );
@@ -366,25 +366,7 @@ final class EnterpriseProvisioning {
 			return $cache[ $cache_key ];
 		}
 
-		$users = get_users(
-			array(
-				'meta_query' => array(
-					'relation' => 'AND',
-					array(
-						'key'   => SiteMetaKeys::key( SiteMetaKeys::IDP_UID ),
-						'value' => $idp_uid,
-					),
-					array(
-						'key'   => SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ),
-						'value' => $idp_id,
-					),
-				),
-				'number'     => 1,
-				'fields'     => 'all',
-			)
-		);
-
-		return $cache[ $cache_key ] = ! empty( $users ) ? $users[0] : null;
+		return $cache[ $cache_key ] = self::identity_repository()->findUserByBinding( $idp_id, $idp_uid );
 	}
 
 	/**
@@ -585,25 +567,14 @@ final class EnterpriseProvisioning {
 	 * Bind a user to an IdP on the current site.
 	 */
 	private static function bind_user_to_idp( int $user_id, string $idp_id, string $idp_uid, string $idp_issuer ): void {
-		update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), $idp_id );
-
-		if ( '' !== $idp_uid ) {
-			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_UID ), $idp_uid );
-		}
-
-		if ( '' !== $idp_issuer ) {
-			update_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::IDP_ISSUER ), $idp_issuer );
-		}
+		self::identity_repository()->bindToProvider( $user_id, $idp_id, $idp_uid, $idp_issuer );
 	}
 
 	/**
 	 * Whether the user is being bound to any identity system for the first time.
 	 */
 	private static function should_clean_sweep_before_binding( int $user_id ): bool {
-		$all_meta = get_user_meta( $user_id );
-		if ( ! is_array( $all_meta ) ) {
-			return true;
-		}
+		$all_meta = self::identity_repository()->allMeta( $user_id );
 
 		foreach ( $all_meta as $meta_key => $values ) {
 			if ( ! self::is_identity_binding_meta_key( (string) $meta_key ) ) {
@@ -673,5 +644,9 @@ final class EnterpriseProvisioning {
 				$context
 			)
 		);
+	}
+
+	private static function identity_repository(): UserIdentityRepository {
+		return new UserIdentityRepository();
 	}
 }

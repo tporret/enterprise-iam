@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.3
-Stable tag: 1.6.0
+Stable tag: 1.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -172,6 +172,17 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 
 == Changelog ==
 
+= 1.7.0 =
+* Refactor: extracted `SsoAccountPolicy` pure-logic class from `SecurityManager` with a matching `SsoAccountPolicyInterface` seam
+* Refactor: extracted `PasskeyEnrollmentValidator` pure class from `WebAuthnHelper` / `PasskeyPolicy`
+* Refactor: extracted `LoginStateMachine` pure JS module from `passkey-login.js`
+* Architecture: introduced `IdpRepositoryInterface` with `SiteIdpAdapter` and `NetworkIdpAdapter`; `IdpManager` and `NetworkIdpManager` updated to implement the interface
+* Architecture: introduced `SettingsSourceInterface` with `SiteSettingsSourceAdapter` and `NetworkSettingsSourceAdapter`; `EffectiveSettingsResolver` and `CurrentSiteIdpManager` updated accordingly
+* Architecture: introduced `UserIdentityRepositoryInterface` and `UserIdentityRepository` adapter; `EnterpriseProvisioning` and `UserIdentityInspector` updated to depend on the interface
+* Architecture: introduced `FederationHandlerInterface` with `SamlFederationAdapter` and `OidcFederationAdapter`; `FederationController` refactored as a protocol-agnostic dispatcher
+* Architecture: extracted `WebAuthnEncoding` utility class (PHP) and `webauthn-encoding.js` module (JS); `WebAuthnHelper` and `passkey-login.js` delegate to the shared utilities
+* Architecture: extracted `PasskeySectionViewModel.js` pure function from `PasskeySection.jsx`; component now consumes the view-model, keeping side-effect and rendering concerns separated
+
 = 1.6.0 =
 * Feature: added Multisite network policy controls with effective settings resolution, scope metadata, and site override enforcement
 * Feature: added a private-content login gate for private posts and pages with destination-preserving redirects
@@ -257,6 +268,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Group and wildcard role mapping
 
 == Upgrade Notice ==
+
+= 1.7.0 =
+Internal architecture refactor across three phases: pure logic extraction, interface/adapter seams, and frontend/federation restructuring. No user-facing behaviour changes, no database schema changes, and no configuration migration required.
 
 = 1.6.0 =
 Adds Multisite governance controls, private-content access gating for private posts and pages, wp-admin IAM visibility, and a read-only WP-CLI operator surface. Review Network Admin defaults and per-site private-content gate settings after upgrade. No database schema changes.

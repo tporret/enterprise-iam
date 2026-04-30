@@ -26,6 +26,7 @@ final class SamlAcsController {
 
 	private const NAMESPACE = 'enterprise-auth/v1';
 	private const PUBLIC_ERROR_CODE = 'federation_failed';
+	private const DEBUG_PREFIX = '[DEBUG-fed-saml]';
 	private string $last_error_reference = '';
 
 	public function register_routes(): void {
@@ -51,16 +52,30 @@ final class SamlAcsController {
 		);
 
 		if ( empty( $saml_response ) ) {
-			$this->log_detailed_error( 'Missing SAMLResponse.', array( 'phase' => 'parameter_validation' ) );
+			$this->log_detailed_error(
+				$this->diagnostic_detail( 'saml_missing_response', 'Missing SAMLResponse.' ),
+				array(
+					'phase'       => 'parameter_validation',
+					'diag_signal' => 'saml_missing_response',
+				)
+			);
 			return $this->error_redirect();
 		}
 
 		$flow_key  = sanitize_text_field( (string) ( $relay_state ?? '' ) );
 		$flow_data = FederationFlowGuard::consume( 'saml', $flow_key );
 		if ( is_wp_error( $flow_data ) ) {
+			$signal = 'saml_flow_validation_failed';
+			if ( 'ea_federation_flow_browser_mismatch' === $flow_data->get_error_code() ) {
+				$signal = 'saml_browser_binding_mismatch';
+			}
+
 			$this->log_detailed_error(
-				$flow_data->get_error_message(),
-				$log_context + array( 'phase' => 'flow_validation' )
+				$this->diagnostic_detail( $signal, $flow_data->get_error_message() ),
+				$log_context + array(
+					'phase'       => 'flow_validation',
+					'diag_signal' => $signal,
+				)
 			);
 			return $this->error_redirect();
 		}
@@ -74,8 +89,14 @@ final class SamlAcsController {
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'saml' || '' === $request_id ) {
 			$this->log_detailed_error(
-				'SAML ACS could not resolve a valid IdP configuration or request binding.',
-				$log_context + array( 'phase' => 'idp_resolution' )
+				$this->diagnostic_detail(
+					'saml_idp_resolution_failed',
+					'SAML ACS could not resolve a valid IdP configuration or request binding.'
+				),
+				$log_context + array(
+					'phase'       => 'idp_resolution',
+					'diag_signal' => 'saml_idp_resolution_failed',
+				)
 			);
 			return $this->error_redirect();
 		}
@@ -96,18 +117,28 @@ final class SamlAcsController {
 			$errors = $auth->getErrors();
 			if ( ! empty( $errors ) ) {
 				$reason = $auth->getLastErrorReason();
+				$signal = $this->classify_assertion_failure_signal( (array) $errors, (string) $reason );
 				$this->log_detailed_error(
-					'SAML validation failed: ' . implode( ', ', $errors )
+					$this->diagnostic_detail(
+						$signal,
+						'SAML validation failed: ' . implode( ', ', $errors )
 					. ( $reason ? ' — ' . $reason : '' ),
-					$log_context + array( 'phase' => 'assertion_validation' )
+					),
+					$log_context + array(
+						'phase'       => 'assertion_validation',
+						'diag_signal' => $signal,
+					)
 				);
 				return $this->error_redirect();
 			}
 
 			if ( ! $auth->isAuthenticated() ) {
 				$this->log_detailed_error(
-					'SAML authentication was not successful.',
-					$log_context + array( 'phase' => 'authentication' )
+					$this->diagnostic_detail( 'saml_not_authenticated', 'SAML authentication was not successful.' ),
+					$log_context + array(
+						'phase'       => 'authentication',
+						'diag_signal' => 'saml_not_authenticated',
+					)
 				);
 				return $this->error_redirect();
 			}
@@ -129,8 +160,11 @@ final class SamlAcsController {
 
 			if ( is_wp_error( $result ) ) {
 				$this->log_detailed_error(
-					$result->get_error_message(),
-					$log_context + array( 'phase' => 'provisioning' )
+					$this->diagnostic_detail( 'saml_provisioning_failed', $result->get_error_message() ),
+					$log_context + array(
+						'phase'       => 'provisioning',
+						'diag_signal' => 'saml_provisioning_failed',
+					)
 				);
 				return $this->error_redirect();
 			}
@@ -138,12 +172,39 @@ final class SamlAcsController {
 			return $this->success_redirect();
 		} catch ( \Throwable $e ) {
 			$this->log_detailed_error(
-				'Unhandled exception during SAML ACS processing.',
-				$log_context + array( 'phase' => 'acs_exception' ),
+				$this->diagnostic_detail( 'saml_acs_exception', 'Unhandled exception during SAML ACS processing.' ),
+				$log_context + array(
+					'phase'       => 'acs_exception',
+					'diag_signal' => 'saml_acs_exception',
+				),
 				$e
 			);
 			return $this->error_redirect();
 		}
+	}
+
+	/**
+	 * Classify assertion validation errors into a sharp diagnostic signal.
+	 *
+	 * @param string[] $errors
+	 */
+	private function classify_assertion_failure_signal( array $errors, string $reason ): string {
+		$error_blob  = strtolower( implode( ',', $errors ) );
+		$reason_blob = strtolower( $reason );
+
+		if ( false !== strpos( $error_blob, 'invalid_signature' ) || false !== strpos( $reason_blob, 'signature' ) ) {
+			return 'saml_assertion_invalid_signature';
+		}
+
+		if ( false !== strpos( $error_blob, 'invalid_response' ) ) {
+			return 'saml_assertion_invalid_response';
+		}
+
+		return 'saml_assertion_validation_failed';
+	}
+
+	private function diagnostic_detail( string $signal, string $detail ): string {
+		return self::DEBUG_PREFIX . ' [' . sanitize_key( $signal ) . '] ' . $detail;
 	}
 
 	/**

@@ -43,6 +43,52 @@
 	opacity: 0.8;
 }
 
+.ea-header__guides {
+	margin-top: 18px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.ea-header__guides-label {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: rgba( 248, 250, 252, 0.7 );
+}
+
+.ea-header__guides-list {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.ea-header__guide-link {
+	display: inline-flex;
+	align-items: center;
+	padding: 8px 12px;
+	border-radius: 999px;
+	border: 1px solid rgba( 255, 255, 255, 0.18 );
+	background: rgba( 255, 255, 255, 0.08 );
+	color: #f8fafc;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	text-decoration: none;
+	transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.ea-header__guide-link:hover,
+.ea-header__guide-link:focus {
+	background: rgba( 255, 255, 255, 0.16 );
+	border-color: rgba( 255, 255, 255, 0.32 );
+	color: #ffffff;
+	transform: translateY( -1px );
+	outline: none;
+}
+
 /* ── Card Grid ───────────────────────────────────────────────────────────── */
 .ea-card-grid {
 	display: grid;
@@ -546,6 +592,11 @@
 }
 
 @media ( max-width: 640px ) {
+	.ea-header__guides {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
 	.ea-card-grid--stats,
 	.ea-card-grid--two-up {
 		grid-template-columns: 1fr;

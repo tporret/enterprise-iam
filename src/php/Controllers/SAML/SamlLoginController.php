@@ -8,8 +8,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-use EnterpriseAuth\Plugin\FederationFlowGuard;
 use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
+use EnterpriseAuth\Plugin\FederationFlowManager;
 use EnterpriseAuth\Plugin\SamlSettingsFactory;
 
 /**
@@ -60,49 +60,48 @@ final class SamlLoginController {
 		try {
 			$settings = SamlSettingsFactory::build( $idp );
 			$auth     = new \OneLogin\Saml2\Auth( $settings );
-			$relay_state = bin2hex( random_bytes( 16 ) );
 
-			// The OneLogin library's login() uses $returnTo as the
-			// RelayState value. We pass a per-request flow key so the ACS
-			// controller can resolve the expected IdP and request binding.
-			$sso_url = $auth->login(
-				$relay_state,
-				array(),                               // parameters
-				! empty( $idp['force_reauth'] ),       // forceAuthn
-				false,                                 // isPassive
-				true                                   // stay — return the redirect URL
+			$flow = FederationFlowManager::start_saml_flow(
+				(string) $idp_id,
+				get_current_blog_id(),
+				static function ( string $relay_state ) use ( $auth, $idp ) {
+					// The OneLogin library's login() uses $returnTo as the
+					// RelayState value. We pass a per-request flow key so the ACS
+					// controller can resolve the expected IdP and request binding.
+					$sso_url = $auth->login(
+						$relay_state,
+						array(),                               // parameters
+						! empty( $idp['force_reauth'] ),       // forceAuthn
+						false,                                 // isPassive
+						true                                   // stay — return the redirect URL
+					);
+
+					if ( empty( $sso_url ) ) {
+						return new \WP_Error(
+							'ea_federation_flow_saml_url',
+							'Could not build SAML AuthnRequest URL.'
+						);
+					}
+
+					$request_id = $auth->getLastRequestID();
+					if ( empty( $request_id ) ) {
+						return new \WP_Error(
+							'ea_federation_flow_saml_request_id',
+							'Could not correlate the SAML authentication request.'
+						);
+					}
+
+					return array(
+						'redirect_url' => (string) $sso_url,
+						'request_id'   => (string) $request_id,
+					);
+				}
 			);
 
-			if ( empty( $sso_url ) ) {
-				return new \WP_REST_Response(
-					array( 'error' => 'Could not build SAML AuthnRequest URL.' ),
-					500
-				);
-			}
-
-			$request_id = $auth->getLastRequestID();
-			if ( empty( $request_id ) ) {
-				return new \WP_REST_Response(
-					array( 'error' => 'Could not correlate the SAML authentication request.' ),
-					500
-				);
-			}
-
-			$issued = FederationFlowGuard::issue(
-				'saml',
-				$relay_state,
-				array(
-					'idp_id'     => $idp_id,
-					'blog_id'    => get_current_blog_id(),
-					'request_id' => $request_id,
-				),
-				300
-			);
-
-			if ( is_wp_error( $issued ) ) {
+			if ( is_wp_error( $flow ) ) {
 				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-					error_log( 'Enterprise IAM – SAML login error: ' . $issued->get_error_message() );
+					error_log( 'Enterprise IAM – SAML login error: ' . $flow->get_error_message() );
 				}
 
 				return new \WP_REST_Response(
@@ -111,7 +110,7 @@ final class SamlLoginController {
 				);
 			}
 
-			return new \WP_REST_Response( null, 302, array( 'Location' => $sso_url ) );
+			return new \WP_REST_Response( null, 302, array( 'Location' => $flow['redirect_url'] ) );
 		} catch ( \Throwable $e ) {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log

@@ -556,6 +556,35 @@ Enable with the **Force Re-Authentication** checkbox in each IdP's configuration
 | SAML signature validation | Handled by the OneLogin SAML toolkit |
 | WebAuthn challenges | Short-lived, server-side verified |
 
+## Architecture
+
+The codebase is structured in three layers, each separated by interface seams to keep pure logic testable in isolation and infrastructure swappable without touching domain code.
+
+### Pure Logic Classes
+
+| Class / Module | Extracted from | What it does |
+|---|---|---|
+| `SsoAccountPolicy` / `SsoAccountPolicyInterface` | `SecurityManager` | Pure SSO eligibility rules — no DB writes, no WordPress globals |
+| `PasskeyEnrollmentValidator` | `WebAuthnHelper`, `PasskeyPolicy` | Pure passkey enrollment eligibility checks — role checks, network settings |
+| `LoginStateMachine.js` | `passkey-login.js` | Pure login state transitions — no DOM, no fetch |
+| `PasskeySectionViewModel.js` | `PasskeySection.jsx` | Pure props → display-state mapping — no React, no side effects |
+
+### Interface / Adapter Seams
+
+| Interface | Adapters | Consumers |
+|---|---|---|
+| `IdpRepositoryInterface` | `SiteIdpAdapter`, `NetworkIdpAdapter` | `IdpManager`, `NetworkIdpManager` |
+| `SettingsSourceInterface` | `SiteSettingsSourceAdapter`, `NetworkSettingsSourceAdapter` | `EffectiveSettingsResolver`, `CurrentSiteIdpManager` |
+| `UserIdentityRepositoryInterface` | `UserIdentityRepository` | `EnterpriseProvisioning`, `UserIdentityInspector` |
+| `FederationHandlerInterface` | `SamlFederationAdapter`, `OidcFederationAdapter` | `FederationController` (dispatcher) |
+
+### Shared Utilities
+
+| Utility | Languages | Purpose |
+|---|---|---|
+| `WebAuthnEncoding` | PHP | Single authoritative base64 / base64url encode–decode for all WebAuthn flows |
+| `webauthn-encoding.js` | JS | Mirrored ArrayBuffer ↔ base64 utilities consumed by `passkey-login.js` |
+
 ## Tech Stack
 
 - PHP 8.3+

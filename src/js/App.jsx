@@ -15,6 +15,9 @@ export default function App() {
 	const isNetworkAdmin = !! window.enterpriseAuth?.isNetworkAdmin;
 	const isNetworkManagedSite = !! window.enterpriseAuth?.isNetworkManagedSite;
 	const isNetworkScreen = isNetworkAdmin && screen.startsWith( 'network-' );
+	const guideLinks = Array.isArray( window.enterpriseAuth?.guideLinks )
+		? window.enterpriseAuth.guideLinks.filter( ( guide ) => guide?.url && guide?.label )
+		: [];
 	const initialTab = isNetworkScreen
 		? ( screen === 'network-idps'
 			? 'providers'
@@ -108,13 +111,31 @@ export default function App() {
 			<header className="ea-header">
 				<div className="ea-header__inner">
 					<h1 className="ea-header__title">Enterprise Auth</h1>
-					<span className="ea-header__badge">v1.6.0</span>
+					<span className="ea-header__badge">v1.7.0</span>
 				</div>
 				<p className="ea-header__subtitle">
 					{ isNetworkScreen
 						? 'Network control plane for multisite identity and access management'
 						: 'Zero Trust security hardening for WordPress' }
 				</p>
+				{ guideLinks.length > 0 && (
+					<div className="ea-header__guides" aria-label="Integration guides">
+						<span className="ea-header__guides-label">Integration Guides</span>
+						<div className="ea-header__guides-list">
+							{ guideLinks.map( ( guide ) => (
+								<a
+									key={ guide.url }
+									className="ea-header__guide-link"
+									href={ guide.url }
+									target="_blank"
+									rel="noreferrer"
+								>
+									{ guide.label }
+								</a>
+							) ) }
+						</div>
+					</div>
+				) }
 			</header>
 
 			{ isNetworkScreen ? (
