@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\IdpManager;
+use EnterpriseAuth\Plugin\AuditLogger;
 use EnterpriseAuth\Plugin\IdpView;
 use EnterpriseAuth\Plugin\NetworkIdpManager;
 use EnterpriseAuth\Plugin\NetworkMode;
@@ -154,6 +155,16 @@ final class NetworkAdminController {
 				$status
 			);
 		}
+		AuditLogger::record(
+			'network_idp_saved',
+			array(
+				'source'        => 'rest',
+				'scope'         => 'network',
+				'idp_id'        => (string) ( $sanitized['id'] ?? '' ),
+				'protocol'      => (string) ( $sanitized['protocol'] ?? '' ),
+				'provider_name' => (string) ( $sanitized['provider_name'] ?? '' ),
+			)
+		);
 
 		return new \WP_REST_Response(
 			IdpView::detail(
@@ -176,6 +187,14 @@ final class NetworkAdminController {
 		}
 
 		SiteAssignmentManager::remove_idp_references( $id );
+		AuditLogger::record(
+			'network_idp_deleted',
+			array(
+				'source' => 'rest',
+				'scope'  => 'network',
+				'idp_id' => $id,
+			)
+		);
 
 		return new \WP_REST_Response( array( 'deleted' => true ), 200 );
 	}
@@ -229,6 +248,16 @@ final class NetworkAdminController {
 		}
 
 		$assignment = SiteAssignmentManager::save_for_blog( $blog_id, $params );
+		AuditLogger::record(
+			'network_site_assignments_updated',
+			array(
+				'source'             => 'rest',
+				'scope'              => 'network',
+				'blog_id'            => $blog_id,
+				'assigned_idp_count' => count( $assignment['assigned_idp_ids'] ),
+				'primary_idp_id'     => $assignment['primary_idp_id'],
+			)
+		);
 
 		return new \WP_REST_Response(
 			array(

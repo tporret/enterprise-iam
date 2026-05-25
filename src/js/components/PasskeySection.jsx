@@ -23,6 +23,7 @@ export default function PasskeySection( {
 	cancelledMessage = 'Managed passkey enrollment was cancelled.',
 	unsupportedMessage = 'This browser cannot perform managed passkey enrollment.',
 	policyItems,
+	onRegistered = () => {},
 } ) {
 	const [ registering, setRegistering ] = useState( false );
 	const effectivePolicyItems = policyItems || [
@@ -103,6 +104,7 @@ export default function PasskeySection( {
 
 			if ( result.success ) {
 				showToast( successMessage );
+				onRegistered();
 				if ( result.redirect_to ) {
 					window.location.href = result.redirect_to;
 				}
@@ -118,7 +120,7 @@ export default function PasskeySection( {
 		} finally {
 			setRegistering( false );
 		}
-	}, [ cancelledMessage, showToast, successMessage, unsupportedMessage ] );
+	}, [ cancelledMessage, onRegistered, showToast, successMessage, unsupportedMessage ] );
 
 	return (
 		<div className="ea-card">

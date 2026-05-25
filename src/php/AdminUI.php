@@ -18,6 +18,7 @@ final class AdminUI {
 	private const NETWORK_PROVIDERS_SLUG = 'enterprise-auth-network-providers';
 	private const NETWORK_ASSIGNMENTS_SLUG = 'enterprise-auth-network-assignments';
 	private const NETWORK_POLICY_SLUG = 'enterprise-auth-network-policy';
+	private const SELF_ENROLLMENT_MENU_SLUG = 'enterprise-auth-passkeys';
 	private const STEP_UP_MENU_SLUG = 'enterprise-auth-security-upgrade';
 
 	public function init(): void {
@@ -37,6 +38,15 @@ final class AdminUI {
 			array( $this, 'render_page' ),
 			'dashicons-shield-alt',
 			3
+		);
+
+		add_submenu_page(
+			'profile.php',
+			__( 'Passkeys', 'enterprise-auth' ),
+			__( 'Passkeys', 'enterprise-auth' ),
+			'read',
+			self::SELF_ENROLLMENT_MENU_SLUG,
+			array( $this, 'render_self_enrollment_page' )
 		);
 
 		add_submenu_page(
@@ -138,6 +148,16 @@ final class AdminUI {
 		echo '<div id="enterprise-auth-root"></div>';
 	}
 
+	public function render_self_enrollment_page(): void {
+		$this->enqueue_assets(
+			array(
+				'screen' => 'self-enrollment',
+			)
+		);
+
+		echo '<div id="enterprise-auth-root"></div>';
+	}
+
 	public function render_step_up_page(): void {
 		if ( ! PasskeyPolicy::is_step_up_required_for_user( get_current_user_id() ) ) {
 			wp_safe_redirect( admin_url() );
@@ -217,6 +237,10 @@ final class AdminUI {
 
 	public static function step_up_page_slug(): string {
 		return self::STEP_UP_MENU_SLUG;
+	}
+
+	public static function self_enrollment_url(): string {
+		return admin_url( 'profile.php?page=' . self::SELF_ENROLLMENT_MENU_SLUG );
 	}
 
 	public static function step_up_url(): string {

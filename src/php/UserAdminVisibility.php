@@ -156,6 +156,12 @@ final class UserAdminVisibility {
 					<th><label><?php echo esc_html__( 'Last Passkey Use', 'enterprise-auth' ); ?></label></th>
 					<td><p class="ea-identity-value"><?php echo esc_html( $this->format_timestamp( (int) ( $passkeys['last_used_at'] ?? 0 ) ) ); ?></p></td>
 				</tr>
+				<?php if ( get_current_user_id() === (int) $user->ID ) : ?>
+					<tr>
+						<th><label><?php echo esc_html__( 'Passkey Management', 'enterprise-auth' ); ?></label></th>
+						<td><a class="button button-secondary" href="<?php echo esc_url( AdminUI::self_enrollment_url() ); ?>"><?php echo esc_html__( 'Manage Passkeys', 'enterprise-auth' ); ?></a></td>
+					</tr>
+				<?php endif; ?>
 				<tr>
 					<th><label><?php echo esc_html__( 'Passkey Step-Up Required', 'enterprise-auth' ); ?></label></th>
 					<td><?php echo $this->render_badges( array( ! empty( $passkeys['step_up_required'] ) ? __( 'Required', 'enterprise-auth' ) : __( 'Not Required', 'enterprise-auth' ) ) ); ?></td>

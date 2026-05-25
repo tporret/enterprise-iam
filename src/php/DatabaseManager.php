@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class DatabaseManager {
 
-	private const SCHEMA_VERSION = 3;
+	private const SCHEMA_VERSION = 4;
 	private const SCHEMA_VERSION_OPTION = 'enterprise_auth_credentials_schema_version';
 
 	/**
@@ -25,16 +25,25 @@ final class DatabaseManager {
 	}
 
 	/**
+	 * Return the full audit event table name including the WP prefix.
+	 */
+	public static function audit_table_name(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'enterprise_auth_audit_events';
+	}
+
+	/**
 	 * Create or update the credentials table using dbDelta().
 	 * Hooked to plugin activation.
 	 */
 	public static function activate(): void {
 		global $wpdb;
 
-		$table   = self::table_name();
+		$table       = self::table_name();
+		$audit_table = self::audit_table_name();
 		$charset = $wpdb->get_charset_collate();
 
-		$sql = "CREATE TABLE {$table} (
+		$credentials_sql = "CREATE TABLE {$table} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			user_id bigint(20) unsigned NOT NULL,
 			credential_id varchar(255) NOT NULL,
@@ -56,8 +65,33 @@ final class DatabaseManager {
 			KEY user_id (user_id)
 		) {$charset};";
 
+		$audit_sql = "CREATE TABLE {$audit_table} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			event varchar(100) NOT NULL,
+			source varchar(50) NOT NULL DEFAULT 'system',
+			result varchar(32) NOT NULL DEFAULT 'success',
+			actor_user_id bigint(20) unsigned DEFAULT NULL,
+			target_user_id bigint(20) unsigned DEFAULT NULL,
+			blog_id bigint(20) unsigned DEFAULT NULL,
+			network_id bigint(20) unsigned DEFAULT NULL,
+			request_route varchar(191) NOT NULL DEFAULT '',
+			request_method varchar(10) NOT NULL DEFAULT '',
+			request_ip varchar(45) NOT NULL DEFAULT '',
+			request_user_agent varchar(255) NOT NULL DEFAULT '',
+			metadata longtext NOT NULL,
+			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY  (id),
+			KEY event (event),
+			KEY source (source),
+			KEY actor_user_id (actor_user_id),
+			KEY target_user_id (target_user_id),
+			KEY blog_id (blog_id),
+			KEY created_at (created_at)
+		) {$charset};";
+
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $sql );
+		dbDelta( $credentials_sql );
+		dbDelta( $audit_sql );
 
 		$origin = PasskeyPolicy::current_registration_origin();
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared

@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\CredentialRepository;
+use EnterpriseAuth\Plugin\AuditLogger;
 use EnterpriseAuth\Plugin\OneTimeTransient;
 use EnterpriseAuth\Plugin\PasskeyEnrollmentValidator;
 use EnterpriseAuth\Plugin\WebAuthnHelper;
@@ -56,18 +57,10 @@ final class PasskeyRegistrationController {
 	}
 
 	/**
-	 * Must be logged-in and either be an admin or be in a required step-up flow.
+	 * Must be logged in; the ceremony always enrolls the current user.
 	 */
 	public function check_permission(): bool {
-		if ( ! is_user_logged_in() ) {
-			return false;
-		}
-
-		if ( current_user_can( 'manage_options' ) ) {
-			return true;
-		}
-
-		return \EnterpriseAuth\Plugin\PasskeyPolicy::is_step_up_required_for_user( get_current_user_id() );
+		return is_user_logged_in() && current_user_can( 'read' );
 	}
 
 	/**
@@ -176,6 +169,15 @@ final class PasskeyRegistrationController {
 			$user_id,
 			\EnterpriseAuth\Plugin\PasskeyPolicy::compliance_status_for_new_credential( $credential_source ),
 			\EnterpriseAuth\Plugin\PasskeyPolicy::current_registration_origin()
+		);
+		AuditLogger::record(
+			'passkey_registered',
+			array(
+				'source'            => 'passkey',
+				'user_id'           => $user_id,
+				'compliance_status' => \EnterpriseAuth\Plugin\PasskeyPolicy::compliance_status_for_new_credential( $credential_source ),
+				'registration_origin' => \EnterpriseAuth\Plugin\PasskeyPolicy::current_registration_origin(),
+			)
 		);
 
 		$redirect_to = \EnterpriseAuth\Plugin\PasskeyPolicy::complete_step_up_if_satisfied( $user_id );

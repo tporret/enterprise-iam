@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 import ToggleCard from './components/ToggleCard';
+import AuditEvents from './components/AuditEvents';
 import PasskeySection from './components/PasskeySection';
+import PasskeyCredentialInventory from './components/PasskeyCredentialInventory';
 import NetworkAssignments from './components/NetworkAssignments';
 import NetworkOverview from './components/NetworkOverview';
 import NetworkSettings from './components/NetworkSettings';
+import PostureDashboard from './components/PostureDashboard';
 import SamlSettings from './components/SamlSettings';
 import OidcSettings from './components/OidcSettings';
 import ScimSettings from './components/ScimSettings';
@@ -25,8 +28,10 @@ export default function App() {
 				? 'assignments'
 				: screen === 'network-policy'
 					? 'policy'
-				: 'overview' )
-		: 'general';
+					: screen === 'network-audit'
+						? 'audit'
+				: 'posture' )
+		: 'posture';
 
 	const [ tab, setTab ] = useState( initialTab );
 	const [ providerTab, setProviderTab ] = useState( 'saml' );
@@ -44,10 +49,9 @@ export default function App() {
 	const [ saving, setSaving ] = useState( false );
 	const [ loaded, setLoaded ] = useState( false );
 	const [ toast, setToast ] = useState( null );
+	const [ passkeyInventoryVersion, setPasskeyInventoryVersion ] = useState( 0 );
 
 	useEffect( () => {
-		apiFetch.use( apiFetch.createNonceMiddleware( window.enterpriseAuth.nonce ) );
-
 		if ( isNetworkScreen ) {
 			setLoaded( true );
 			return;
@@ -61,6 +65,10 @@ export default function App() {
 
 	const showToast = useCallback( ( message, type = 'success' ) => {
 		setToast( { message, type } );
+	}, [] );
+
+	const refreshPasskeyInventory = useCallback( () => {
+		setPasskeyInventoryVersion( ( version ) => version + 1 );
 	}, [] );
 
 	const scopeMeta = settings.scope_meta || {};
@@ -111,7 +119,7 @@ export default function App() {
 			<header className="ea-header">
 				<div className="ea-header__inner">
 					<h1 className="ea-header__title">Enterprise Auth</h1>
-					<span className="ea-header__badge">v1.7.0</span>
+					<span className="ea-header__badge">v1.8.0</span>
 				</div>
 				<p className="ea-header__subtitle">
 					{ isNetworkScreen
@@ -142,6 +150,13 @@ export default function App() {
 				<nav className="ea-tabs">
 					<button
 						type="button"
+						className={ `ea-tabs__btn${ tab === 'posture' ? ' ea-tabs__btn--active' : '' }` }
+						onClick={ () => setTab( 'posture' ) }
+					>
+						Posture
+					</button>
+					<button
+						type="button"
 						className={ `ea-tabs__btn${ tab === 'overview' ? ' ea-tabs__btn--active' : '' }` }
 						onClick={ () => setTab( 'overview' ) }
 					>
@@ -168,9 +183,23 @@ export default function App() {
 					>
 						Defaults &amp; Policy
 					</button>
+					<button
+						type="button"
+						className={ `ea-tabs__btn${ tab === 'audit' ? ' ea-tabs__btn--active' : '' }` }
+						onClick={ () => setTab( 'audit' ) }
+					>
+						Audit Log
+					</button>
 				</nav>
 			) : (
 				<nav className="ea-tabs">
+					<button
+						type="button"
+						className={ `ea-tabs__btn${ tab === 'posture' ? ' ea-tabs__btn--active' : '' }` }
+						onClick={ () => setTab( 'posture' ) }
+					>
+						Posture
+					</button>
 					<button
 						type="button"
 						className={ `ea-tabs__btn${ tab === 'general' ? ' ea-tabs__btn--active' : '' }` }
@@ -199,6 +228,13 @@ export default function App() {
 					>
 						SCIM Provisioning
 					</button>
+					<button
+						type="button"
+						className={ `ea-tabs__btn${ tab === 'audit' ? ' ea-tabs__btn--active' : '' }` }
+						onClick={ () => setTab( 'audit' ) }
+					>
+						Audit Log
+					</button>
 				</nav>
 			) }
 
@@ -208,6 +244,10 @@ export default function App() {
 						<strong>Managed by Network Admin.</strong>{ ' ' }
 						Identity providers for this site are assigned from Network Admin. This site can review assigned providers while the rest of the dashboard keeps its current layout for this release.
 					</div>
+				) }
+
+				{ isNetworkScreen && tab === 'posture' && (
+					<PostureDashboard showToast={ showToast } network={ true } />
 				) }
 
 				{ isNetworkScreen && tab === 'overview' && (
@@ -265,6 +305,16 @@ export default function App() {
 
 				{ isNetworkScreen && tab === 'policy' && (
 					<NetworkSettings showToast={ showToast } />
+				) }
+
+				{ isNetworkScreen && tab === 'audit' && (
+					<section className="ea-card-grid">
+						<AuditEvents showToast={ showToast } />
+					</section>
+				) }
+
+				{ ! isNetworkScreen && tab === 'posture' && (
+					<PostureDashboard showToast={ showToast } />
 				) }
 
 				{ ! isNetworkScreen && tab === 'general' && (
@@ -360,6 +410,11 @@ export default function App() {
 						<PasskeySection
 							showToast={ showToast }
 							requireDeviceBound={ settings.require_device_bound_authenticators }
+							onRegistered={ refreshPasskeyInventory }
+						/>
+						<PasskeyCredentialInventory
+							showToast={ showToast }
+							refreshKey={ passkeyInventoryVersion }
 						/>
 					</section>
 				) }
@@ -390,6 +445,12 @@ export default function App() {
 						updateSetting={ updateSetting }
 						scopeMeta={ getScopeMeta( 'deprovision_steward_user_id' ) }
 					/>
+				) }
+
+				{ ! isNetworkScreen && tab === 'audit' && (
+					<section className="ea-card-grid">
+						<AuditEvents showToast={ showToast } />
+					</section>
 				) }
 			</main>
 

@@ -311,10 +311,73 @@
 	margin-top: 6px;
 }
 
+.ea-passkey-inventory__header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 16px;
+}
+
+.ea-passkey-inventory__empty {
+	margin-top: 16px;
+}
+
+.ea-passkey-inventory__table-wrap {
+	margin-top: 16px;
+	overflow-x: auto;
+}
+
+.ea-passkey-inventory__table {
+	width: 100%;
+	min-width: 980px;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.ea-passkey-inventory__table th,
+.ea-passkey-inventory__table td {
+	text-align: left;
+	vertical-align: top;
+	padding: 10px 12px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.ea-passkey-inventory__table th {
+	font-weight: 600;
+	color: #475569;
+	background: #f8fafc;
+}
+
+.ea-passkey-inventory__table td strong,
+.ea-passkey-inventory__table td span,
+.ea-passkey-inventory__table td code {
+	display: block;
+}
+
+.ea-passkey-inventory__table td span {
+	margin-top: 4px;
+	color: #64748b;
+}
+
+.ea-passkey-inventory__table code {
+	font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+	font-size: 12px;
+	color: #1e293b;
+}
+
+.ea-audit-events__table {
+	min-width: 760px;
+}
+
 .ea-stepup {
 	max-width: 760px;
 	margin: 32px auto;
 	padding: 0 16px;
+
+.ea-self-enrollment {
+	max-width: 760px;
+	margin: 32px 0;
+}
 }
 
 .ea-stepup__meta {
@@ -489,6 +552,101 @@
 	font-size: 30px;
 	font-weight: 700;
 	color: #0f172a;
+}
+
+.ea-posture-hero {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 20px;
+	padding: 22px 24px;
+	border: 1px solid #dbe4ee;
+	border-radius: 10px;
+	background: #f8fafc;
+}
+
+.ea-posture-hero h2 {
+	margin: 0;
+	font-size: 22px;
+	line-height: 1.2;
+	color: #0f172a;
+}
+
+.ea-posture-hero__eyebrow {
+	margin: 0 0 6px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #64748b;
+}
+
+.ea-posture-score {
+	display: grid;
+	place-items: center;
+	width: 86px;
+	height: 86px;
+	border-radius: 50%;
+	border: 5px solid #22c55e;
+	background: #ffffff;
+	line-height: 1;
+}
+
+.ea-posture-score strong {
+	font-size: 28px;
+	color: #0f172a;
+}
+
+.ea-posture-score span {
+	font-size: 11px;
+	font-weight: 700;
+	color: #64748b;
+	text-transform: uppercase;
+}
+
+.ea-posture-score--warning {
+	border-color: #f59e0b;
+}
+
+.ea-posture-score--critical {
+	border-color: #dc2626;
+}
+
+.ea-posture-kpi-grid,
+.ea-posture-settings {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.ea-posture-spacer {
+	margin-top: 16px;
+}
+
+.ea-posture-setting {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	background: #f8fafc;
+}
+
+.ea-posture-setting span {
+	font-weight: 600;
+	color: #334155;
+}
+
+.ea-posture-findings li {
+	gap: 8px;
+}
+
+.ea-posture-sites__table {
+	min-width: 900px;
 }
 
 .ea-network-kpis {
@@ -793,6 +951,16 @@
 .ea-badge--inactive {
 	background: #f1f5f9;
 	color: #64748b;
+}
+
+.ea-badge--warning {
+	background: #fef3c7;
+	color: #92400e;
+}
+
+.ea-badge--critical {
+	background: #fee2e2;
+	color: #991b1b;
 }
 
 /* ── Metadata Upload ─────────────────────────────────────────────────────── */

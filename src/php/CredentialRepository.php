@@ -295,6 +295,34 @@ final class CredentialRepository {
 	}
 
 	/**
+	 * Return passkey credential provenance for administrator inventory views.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function credential_inventory( int $limit = 100 ): array {
+		global $wpdb;
+
+		$limit = max( 1, min( 500, $limit ) );
+		$table = DatabaseManager::table_name();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, user_id, credential_id, sign_count, transports, attestation_type, aaguid, backup_eligible, backup_status, uv_initialized, compliance_status, registration_origin, created_at, last_used_at FROM {$table} ORDER BY COALESCE(last_used_at, created_at) DESC, id DESC LIMIT %d",
+				$limit
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		if ( ! $rows ) {
+			return array();
+		}
+
+		return array_map( array( self::class, 'row_to_inventory_item' ), $rows );
+	}
+
+	/**
 	 * Convert a DB row to a PublicKeyCredentialSource.
 	 */
 	private static function row_to_source( array $row ): PublicKeyCredentialSource {
@@ -323,6 +351,42 @@ final class CredentialRepository {
 			self::db_value_to_bool( $row['backup_eligible'] ?? null ),
 			self::db_value_to_bool( $row['backup_status'] ?? null ),
 			self::db_value_to_bool( $row['uv_initialized'] ?? null ),
+		);
+	}
+
+	/**
+	 * @param array<string, mixed> $row
+	 * @return array<string, mixed>
+	 */
+	private static function row_to_inventory_item( array $row ): array {
+		$transports = json_decode( (string) ( $row['transports'] ?? '[]' ), true );
+		if ( ! is_array( $transports ) ) {
+			$transports = array();
+		}
+
+		$user_id = (int) ( $row['user_id'] ?? 0 );
+		$user    = $user_id > 0 ? get_userdata( $user_id ) : false;
+
+		return array(
+			'id' => (int) ( $row['id'] ?? 0 ),
+			'credential_fingerprint' => substr( hash( 'sha256', (string) ( $row['credential_id'] ?? '' ) ), 0, 16 ),
+			'user' => array(
+				'id' => $user_id,
+				'login' => $user ? (string) $user->user_login : '',
+				'email' => $user ? (string) $user->user_email : '',
+				'display_name' => $user ? (string) $user->display_name : '',
+			),
+			'sign_count' => (int) ( $row['sign_count'] ?? 0 ),
+			'transports' => array_values( array_filter( array_map( 'strval', $transports ) ) ),
+			'attestation_type' => (string) ( $row['attestation_type'] ?? 'none' ),
+			'aaguid' => (string) ( $row['aaguid'] ?? '' ),
+			'backup_eligible' => self::db_value_to_bool( $row['backup_eligible'] ?? null ),
+			'backup_status' => self::db_value_to_bool( $row['backup_status'] ?? null ),
+			'uv_initialized' => self::db_value_to_bool( $row['uv_initialized'] ?? null ),
+			'compliance_status' => (string) ( $row['compliance_status'] ?? self::COMPLIANCE_STATUS_COMPLIANT ),
+			'registration_origin' => (string) ( $row['registration_origin'] ?? '' ),
+			'created_at' => (string) ( $row['created_at'] ?? '' ),
+			'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
 		);
 	}
 

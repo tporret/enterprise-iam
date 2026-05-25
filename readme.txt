@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.3
-Stable tag: 1.7.0
+Stable tag: 1.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,6 +18,7 @@ Key features:
 
 * Passkey authentication (WebAuthn) for passwordless login
 * Tenant-scoped device-bound passkey policy that can reject backup-eligible synced credentials during enrollment
+* Employee self-service passkey enrollment from Profile -> Passkeys
 * Network-managed Multisite defaults with explicit site override policy controls
 * Site-scoped private content login gating for private posts and pages
 * User IAM visibility on WordPress Users and Profile screens
@@ -51,7 +52,11 @@ Key features:
 * First-link clean sweep revokes legacy local credentials when an account becomes IdP-managed
 * Controlled passkey step-up migration for tenants that move from synced passkeys to device-bound authenticators
 * Credential audit state for passkeys — compliance status, registration origin, and last-used timestamp retained per credential
-* Identity audit hooks (`ea_identity_event`) for SSO login and SCIM lifecycle actions
+* Passkey credential inventory with masked provenance metadata, assurance state, authenticator metadata, and last-use signals
+* Fresh passkey step-up protection for high-risk IAM administration actions
+* Durable IAM audit log for SSO/SCIM lifecycle events, passkey enrollment, step-up outcomes, and high-risk IAM mutations
+* IAM posture dashboard with site and network risk rollups
+* Identity audit hooks (`ea_identity_event`) for SSO login and SCIM lifecycle integrations
 * REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of sensitive dynamic responses
 * Correct local vs SSO routing — local accounts on SSO domains always reach the password form
 * Security hardening controls for WordPress auth behaviour
@@ -108,6 +113,14 @@ Yes. The General settings tab includes a **Require Device-Bound Authenticators**
 
 When enabled, new passkey enrollment rejects backup-eligible synced credentials. Existing synced credentials are treated as legacy non-compliant and moved through a controlled step-up flow: if a user signs in with one, they are redirected to a self-service **Security Upgrade Required** page until they register a compliant replacement on the managed device.
 
+= Can employees enroll their own passkeys? =
+
+Yes. Logged-in users with the standard `read` capability can enroll account-scoped passkeys from Profile -> Passkeys. The registration ceremony always enrolls the current user.
+
+= Are high-risk IAM administration changes protected? =
+
+Yes. Settings saves, SCIM token generation, IdP create/delete, network defaults, network IdP changes, and network site assignments require a fresh logged-in passkey assertion before the REST mutation proceeds.
+
 = Which platform passkeys are currently accepted by the local attestation bundle? =
 
 The bundled local trust policy currently covers Windows Hello Hardware, Windows Hello VBS, and the approved Android platform authenticator metadata shipped with the plugin. Apple enterprise passkey attestation is not bundled yet.
@@ -130,7 +143,11 @@ Yes. The plugin exposes read-only commands under `wp enterprise-auth` for inspec
 
 = Can admins inspect IAM posture from wp-admin? =
 
-Yes. The Users list and Profile/Edit User screens include read-only Enterprise Auth visibility for identity source, provider binding, passkey summary, and suspension posture, scoped to the current site in Multisite.
+Yes. The Posture tab summarizes identity source mix, passkey coverage, settings posture, findings, score, and Network Admin site risk rollups. The Users list and Profile/Edit User screens also include read-only Enterprise Auth visibility for identity source, provider binding, passkey summary, and suspension posture, scoped to the current site in Multisite.
+
+= Does Enterprise Auth include durable audit logging? =
+
+Yes. Recent IAM events are stored in the custom audit table and shown in the Audit Log tab. Secret, token, assertion, key, and raw credential metadata are redacted before persistence.
 
 = How does SCIM deprovisioning work on Multisite? =
 
@@ -149,6 +166,7 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * WebAuthn challenges are short-lived and verified server-side.
 * Device-bound passkey policy: optional tenant setting rejects backup-eligible synced passkeys during enrollment.
 * Passkey migration control: when strict device-bound mode is enabled, legacy non-compliant credentials trigger a self-service step-up flow instead of immediate lockout.
+* High-risk admin step-up: sensitive IAM mutations require a fresh logged-in passkey assertion.
 * Passkey lifecycle tracking: credential records retain compliance status, registration origin, and last-used timestamps to support safe migration and audit workflows.
 * Local attestation bundle scope: current pinned metadata is limited to Windows Hello Hardware, Windows Hello VBS, and the bundled Android platform authenticator entry.
 * Break-glass admin isolation: user ID 1 and all administrator accounts are blocked from SSO login and SCIM modification.
@@ -168,9 +186,18 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Session expiry auto re-auth: the `enterprise_auth_last_idp` cookie (site-scoped on Multisite; 90-day, HttpOnly, Secure, SameSite=Lax) enables seamless redirect to the correct IdP when a WP session expires.
 * Force Sign-In Mode: optional per-IdP setting appends ForceAuthn=true (SAML) or prompt=login (OIDC) to each authentication request.
 * REST API cache-control: all `enterprise-auth/` REST endpoints return `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0` headers. This defends against web cache deception and poisoning attacks where CDN or proxy URL-parser discrepancies could cause sensitive dynamic responses to be stored and served to other users.
-* Auditability: `ea_identity_event` hooks fire on successful SSO login and on SCIM lifecycle events, with delete events carrying reassignment and request metadata where available.
+* Auditability: durable audit events record SSO/SCIM lifecycle activity, passkey enrollment, high-risk step-up outcomes, and protected IAM mutations. `ea_identity_event` hooks still fire for integrations, with delete events carrying reassignment and request metadata where available.
 
 == Changelog ==
+
+= 1.8.0 =
+* Feature: hardened private-content login gating for private custom post types and path-based private requests.
+* Feature: added passkey credential provenance inventory with masked fingerprints, user metadata, authenticator metadata, compliance state, and last-use signals.
+* Feature: added Profile -> Passkeys employee self-enrollment for current-user passkey registration.
+* Security: added high-risk IAM action step-up, requiring a fresh logged-in passkey assertion before sensitive REST mutations proceed.
+* Feature: added durable IAM audit logging with redaction for secrets, tokens, assertions, keys, and raw credential metadata.
+* Feature: added IAM posture dashboard and REST endpoint for site posture, network rollups, scoring, and weighted findings.
+* Test: added deterministic harnesses for private path gating, passkey inventory, self-enrollment permission, step-up guard, audit logging, and posture scoring.
 
 = 1.7.0 =
 * Refactor: extracted `SsoAccountPolicy` pure-logic class from `SecurityManager` with a matching `SsoAccountPolicyInterface` seam
@@ -268,6 +295,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Group and wildcard role mapping
 
 == Upgrade Notice ==
+
+= 1.8.0 =
+Adds enterprise IAM hardening surfaces: private-content resolution improvements, passkey provenance inventory, employee passkey self-enrollment, high-risk action step-up, durable audit logging, and the IAM posture dashboard. Database schema upgrades create an audit events table automatically on activation/runtime upgrade.
 
 = 1.7.0 =
 Internal architecture refactor across three phases: pure logic extraction, interface/adapter seams, and frontend/federation restructuring. No user-facing behaviour changes, no database schema changes, and no configuration migration required.

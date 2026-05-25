@@ -9,9 +9,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\Controllers\IdpController;
+use EnterpriseAuth\Plugin\Controllers\AuditEventsController;
 use EnterpriseAuth\Plugin\Controllers\LoginRouter;
 use EnterpriseAuth\Plugin\Controllers\NetworkAdminController;
 use EnterpriseAuth\Plugin\Controllers\NetworkSettingsController;
+use EnterpriseAuth\Plugin\Controllers\PostureController;
+use EnterpriseAuth\Plugin\Controllers\PasskeyCredentialsController;
+use EnterpriseAuth\Plugin\Controllers\PasskeyStepUpController;
 use EnterpriseAuth\Plugin\Controllers\ScimController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcCallbackController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcLoginController;
@@ -34,6 +38,8 @@ final class Core {
 		// Security hardening – runs on every request.
 		( new SecurityManager() )->init();
 		( new AccessGate() )->init();
+		$audit_logger = new AuditLogger();
+		add_action( 'ea_identity_event', array( $audit_logger, 'record_identity_event' ), 10, 2 );
 
 		// Admin UI – only in wp-admin context.
 		if ( is_admin() ) {
@@ -45,8 +51,12 @@ final class Core {
 		add_action(
 			'rest_api_init',
 			static function (): void {
+				( new AuditEventsController() )->register_routes();
+				( new PostureController() )->register_routes();
 				( new SettingsController() )->register_routes();
+				( new PasskeyCredentialsController() )->register_routes();
 				( new PasskeyRegistrationController() )->register_routes();
+				( new PasskeyStepUpController() )->register_routes();
 				( new PasskeyLoginController() )->register_routes();
 				( new IdpController() )->register_routes();
 				( new NetworkAdminController() )->register_routes();
@@ -82,7 +92,41 @@ final class Core {
 		add_action( 'template_redirect', array( $this, 'enforce_passkey_step_up_gate' ) );
 
 		// Prevent CDN / proxy caching of dynamic REST responses.
+		add_filter( 'rest_pre_dispatch', array( $this, 'enforce_high_risk_rest_step_up' ), 10, 3 );
 		add_filter( 'rest_post_dispatch', array( $this, 'add_rest_cache_headers' ), 10, 3 );
+	}
+
+	public function enforce_high_risk_rest_step_up( mixed $result, \WP_REST_Server $_server, \WP_REST_Request $request ): mixed {
+		if ( null !== $result ) {
+			return $result;
+		}
+
+		if ( ! is_user_logged_in() || ! PasskeyStepUp::is_high_risk_rest_request( $request ) ) {
+			return $result;
+		}
+
+		if ( PasskeyStepUp::is_verified( get_current_user_id() ) ) {
+			return $result;
+		}
+
+		AuditLogger::record(
+			'passkey_step_up_required',
+			array(
+				'source'         => 'rest',
+				'result'         => 'blocked',
+				'request_route'  => $request->get_route(),
+				'request_method' => $request->get_method(),
+			)
+		);
+
+		return new \WP_REST_Response(
+			array(
+				'code' => 'passkey_step_up_required',
+				'error' => __( 'Confirm your passkey before changing enterprise IAM configuration.', 'enterprise-auth' ),
+				'step_up_ttl' => PasskeyStepUp::ttl(),
+			),
+			403
+		);
 	}
 
 	/**

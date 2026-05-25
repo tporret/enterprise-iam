@@ -6,6 +6,7 @@ It combines:
 
 - Passkeys (WebAuthn)
 - Tenant-scoped device-bound passkey enforcement with controlled migration for legacy synced credentials
+- Employee self-service passkey enrollment from Profile -> Passkeys
 - SAML 2.0 Service Provider support
 - OpenID Connect (OIDC) support
 - Domain-based SSO routing
@@ -29,7 +30,11 @@ It combines:
 - Force Sign-In Mode — per-IdP ForceAuthn (SAML) and prompt=login (OIDC)
 - First-link clean sweep for existing local accounts that become IdP-managed
 - Identity event audit hooks for SSO login and SCIM lifecycle actions
+- Durable IAM audit log for security events, passkey step-up, and high-risk configuration mutations
+- IAM posture dashboard with site and network risk rollups
 - Passkey credential audit state with compliance status, registration origin, and last-used tracking
+- Passkey credential inventory with masked provenance metadata
+- Fresh passkey step-up protection for high-risk IAM administration actions
 - REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of dynamic responses
 
 ## Highlights
@@ -40,6 +45,7 @@ It combines:
 - Network control plane for Multisite defaults, inherited settings, and site override enforcement
 - Private content login gate that preserves `redirect_to` without forcing whole-site authentication
 - Read-only IAM visibility in wp-admin user management screens
+- IAM posture dashboard for identity source mix, passkey coverage, settings posture, findings, and network site risk rollups
 - Read-only operator surface under `wp enterprise-auth ...`
 - SAML metadata endpoint and ACS flow
 - OIDC authorization and callback flow
@@ -57,7 +63,7 @@ It combines:
 - Session expiry auto re-auth — expired sessions redirect transparently back to the user's IdP
 - Force Sign-In Mode — optional per-IdP setting to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
 - SCIM delete supports explicit content steward reassignment, fail-closed 409 responses, and optional network-scope deprovision on Multisite
-- Audit-friendly `ea_identity_event` hooks on SSO login and SCIM lifecycle actions
+- Durable audit logging for SSO/SCIM lifecycle events, passkey enrollment, step-up outcomes, and high-risk IAM mutations
 - REST API cache-control hardening — `Cache-Control: no-store, no-cache, must-revalidate, private` on all `enterprise-auth/` REST responses to prevent web cache deception and poisoning attacks
 
 ## Requirements
@@ -158,9 +164,12 @@ docker exec wordpress sh -lc \
 Enterprise Auth uses attestation-gated platform passkey enrollment for passwordless login.
 
 - Administrators can register managed passkeys from the Enterprise Auth admin UI.
+- Employees can enroll their own account-scoped passkeys from **Profile -> Passkeys**.
 - The **Require Device-Bound Authenticators** tenant setting rejects backup-eligible synced passkeys during new enrollment.
 - When strict mode is enabled, existing backup-eligible credentials are marked as legacy non-compliant. A user who signs in with one of those credentials is redirected into a self-service **Security Upgrade Required** flow until they register a compliant replacement.
 - Credential records retain compliance status, registration origin, and last-used timestamps so the migration flow can distinguish compliant versus legacy credentials safely.
+- Administrators can review masked passkey credential provenance, assurance status, authenticator metadata, and last-use signals from the admin UI.
+- High-risk IAM configuration changes require a fresh logged-in passkey assertion before the REST mutation is allowed.
 
 Current attestation scope in the local trust bundle is limited to:
 
@@ -241,7 +250,16 @@ The plugin adds a read-only IAM status layer to wp-admin for support and audit w
 
 - Users list columns surface identity source, provider binding, passkey summary, and suspension posture.
 - Profile and Edit User screens show the current site's identity context in Multisite.
+- Profile screens include a current-user **Manage Passkeys** entry point for self-service enrollment.
 - The visibility layer is intentionally read-only and does not expose secrets.
+
+## IAM Posture Dashboard
+
+The Enterprise Auth admin UI includes a posture dashboard for quick risk review.
+
+- Site posture summarizes identity source mix, passkey coverage, legacy passkey compliance, users requiring step-up, configured providers, and key security settings.
+- Findings are weighted into a posture score so administrators can prioritize missing IdPs, local-account exposure, missing passkeys, legacy passkeys, step-up migration, application password exposure, and private-content gate state.
+- Network Admin posture rolls up site scores, assignment coverage, user counts, local-account counts, legacy passkeys, step-up needs, and finding counts across Multisite.
 
 ## Custom Attribute Mapping
 
@@ -377,11 +395,14 @@ The SCIM delete implementation is explicit and fail-closed.
 
 ### Audit Events
 
-Enterprise Auth emits `ea_identity_event` actions on successful SSO login and SCIM lifecycle operations.
+Enterprise Auth records durable audit events and still emits `ea_identity_event` actions for integrations.
 
 - `sso_login` is emitted after a successful SSO-authenticated WordPress login.
 - `scim_create`, `scim_update`, `scim_delete`, `scim_delete_rejected`, and `scim_delete_failed` are emitted for SCIM lifecycle activity.
 - SCIM delete events include request scope, reassignment plan, external identifier, and request metadata when available, making it straightforward to forward the event stream into SIEM or audit logging pipelines.
+- The built-in audit log stores IAM events in `{prefix}enterprise_auth_audit_events` and exposes recent entries in the admin **Audit Log** tab.
+- Audit records include actor, target, site/network scope, route, method, IP, user agent, result, timestamp, and redacted metadata.
+- Secret, token, assertion, key, and raw credential fields are redacted before persistence.
 
 ### Group Endpoints
 

@@ -96,6 +96,13 @@ final class SettingsController {
 				(bool) ( $previous_effective['require_device_bound_authenticators'] ?? EffectiveSettingsResolver::defaults()['require_device_bound_authenticators'] ),
 				(bool) ( $current_effective['require_device_bound_authenticators'] ?? EffectiveSettingsResolver::defaults()['require_device_bound_authenticators'] )
 			);
+			AuditLogger::record(
+				'settings_updated',
+				array(
+					'source'       => 'rest',
+					'changed_keys' => array_values( array_keys( $params ) ),
+				)
+			);
 
 			return new \WP_REST_Response( $current_effective, 200 );
 		}
@@ -147,6 +154,14 @@ final class SettingsController {
 		self::sync_device_bound_policy_transition(
 			(bool) ( $previous_effective['require_device_bound_authenticators'] ?? EffectiveSettingsResolver::defaults()['require_device_bound_authenticators'] ),
 			(bool) ( $current_effective['require_device_bound_authenticators'] ?? EffectiveSettingsResolver::defaults()['require_device_bound_authenticators'] )
+		);
+		AuditLogger::record(
+			'settings_updated',
+			array(
+				'source'       => 'rest',
+				'changed_keys' => array_values( array_keys( $params ) ),
+				'scope'        => 'site_override',
+			)
 		);
 
 		return new \WP_REST_Response( $current_effective, 200 );
@@ -208,6 +223,16 @@ final class SettingsController {
 				}
 			);
 		}
+		AuditLogger::record(
+			'network_settings_updated',
+			array(
+				'source'              => 'rest',
+				'scope'               => 'network',
+				'default_keys'        => array_values( array_keys( $defaults_payload ) ),
+				'policy_keys'         => array_values( array_keys( $policy_payload ) ),
+				'affected_blog_count' => count( $current_site_policies ),
+			)
+		);
 
 		return self::read_network_settings_payload();
 	}
@@ -312,6 +337,12 @@ final class SettingsController {
 		$hash      = wp_hash_password( $plaintext );
 
 		update_option( self::SCIM_TOKEN_OPTION, $hash );
+		AuditLogger::record(
+			'scim_token_generated',
+			array(
+				'source' => 'rest',
+			)
+		);
 
 		return new \WP_REST_Response(
 			array(

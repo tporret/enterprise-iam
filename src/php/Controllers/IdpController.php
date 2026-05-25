@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use EnterpriseAuth\Plugin\CurrentSiteIdpManager;
+use EnterpriseAuth\Plugin\AuditLogger;
 use EnterpriseAuth\Plugin\IdpManager;
 use EnterpriseAuth\Plugin\IdpView;
 
@@ -142,6 +143,15 @@ final class IdpController {
 				$status
 			);
 		}
+		AuditLogger::record(
+			'idp_saved',
+			array(
+				'source'        => 'rest',
+				'idp_id'        => (string) ( $sanitized['id'] ?? '' ),
+				'protocol'      => (string) ( $sanitized['protocol'] ?? '' ),
+				'provider_name' => (string) ( $sanitized['provider_name'] ?? '' ),
+			)
+		);
 
 		return new \WP_REST_Response( IdpView::detail( $sanitized ), 200 );
 	}
@@ -157,6 +167,13 @@ final class IdpController {
 		if ( ! $deleted ) {
 			return new \WP_REST_Response( array( 'error' => 'IdP not found.' ), 404 );
 		}
+		AuditLogger::record(
+			'idp_deleted',
+			array(
+				'source' => 'rest',
+				'idp_id' => (string) $id,
+			)
+		);
 
 		return new \WP_REST_Response( array( 'deleted' => true ), 200 );
 	}
