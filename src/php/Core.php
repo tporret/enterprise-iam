@@ -18,6 +18,7 @@ use EnterpriseAuth\Plugin\Controllers\PasskeyCredentialsController;
 use EnterpriseAuth\Plugin\Controllers\PasskeyStepUpController;
 use EnterpriseAuth\Plugin\Controllers\ScimController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcCallbackController;
+use EnterpriseAuth\Plugin\Controllers\OIDC\OidcDiscoveryController;
 use EnterpriseAuth\Plugin\Controllers\OIDC\OidcLoginController;
 use EnterpriseAuth\Plugin\Controllers\PasskeyLoginController;
 use EnterpriseAuth\Plugin\Controllers\PasskeyRegistrationController;
@@ -67,6 +68,7 @@ final class Core {
 				( new SamlAcsController() )->register_routes();
 				( new OidcLoginController() )->register_routes();
 				( new OidcCallbackController() )->register_routes();
+				( new OidcDiscoveryController() )->register_routes();
 				( new ScimController() )->register_routes();
 			}
 		);

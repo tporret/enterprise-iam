@@ -44,6 +44,8 @@ export default function OidcSettings( {
 	emptyMessage,
 } ) {
 	const [ saving, setSaving ] = useState( false );
+	const [ testing, setTesting ] = useState( false );
+	const [ readinessResult, setReadinessResult ] = useState( null );
 	const {
 		idps,
 		loaded,
@@ -51,6 +53,7 @@ export default function OidcSettings( {
 		roleMappings,
 		domainText,
 		setDomainText,
+		setEditing,
 		loadIdps,
 		startEdit,
 		startNew,
@@ -94,11 +97,10 @@ export default function OidcSettings( {
 		setFetching( true );
 
 		try {
-			const resp = await window.fetch( url );
-			if ( ! resp.ok ) {
-				throw new Error( `HTTP ${ resp.status }` );
-			}
-			const config = await resp.json();
+			const discovery = await apiFetch( {
+				path: `enterprise-auth/v1/oidc/discovery?issuer_url=${ encodeURIComponent( url ) }`,
+			} );
+			const config = discovery?.config || {};
 
 			// Auto-fill the form with discovered values.
 			setEditing( ( prev ) => ( {
@@ -114,17 +116,18 @@ export default function OidcSettings( {
 				end_session_endpoint:
 					config.end_session_endpoint || prev.end_session_endpoint,
 			} ) );
+			setReadinessResult( null );
 
 			showToast( 'Discovery successful — fields auto-filled.' );
-		} catch {
+		} catch ( error ) {
 			showToast(
-				'Failed to fetch OpenID Configuration. Check the URL and try again.',
+				error?.message || 'Failed to fetch OpenID Configuration. Check the URL and try again.',
 				'error'
 			);
 		} finally {
 			setFetching( false );
 		}
-	}, [ discoveryUrl, showToast ] );
+	}, [ discoveryUrl, setEditing, showToast ] );
 
 	// ── Editing helpers ─────────────────────────────────────────────────
 
@@ -158,6 +161,30 @@ export default function OidcSettings( {
 			setSaving( false );
 		}
 	}, [ endpointBase, editing, roleMappings, domainText, showToast, cancelEdit, loadIdps ] );
+
+	const handleReadiness = useCallback( async () => {
+		if ( ! editing ) {
+			return;
+		}
+
+		setTesting( true );
+		setReadinessResult( null );
+
+		try {
+			const payload = buildIdpPayload( editing, roleMappings, domainText );
+			const result = await apiFetch( {
+				path: 'enterprise-auth/v1/oidc/readiness',
+				method: 'POST',
+				data: payload,
+			} );
+			setReadinessResult( result );
+			showToast( result?.ready ? 'OIDC configuration checks passed.' : 'OIDC configuration needs attention.', result?.ready ? 'success' : 'error' );
+		} catch ( error ) {
+			showToast( error?.message || 'OIDC readiness check failed.', 'error' );
+		} finally {
+			setTesting( false );
+		}
+	}, [ editing, roleMappings, domainText, showToast ] );
 
 	if ( ! loaded ) {
 		return <p style={ { color: '#64748b' } }>Loading OIDC settings&hellip;</p>;
@@ -366,6 +393,14 @@ export default function OidcSettings( {
 				<div className="ea-form-actions">
 					<button
 						type="button"
+						className="ea-btn ea-btn--secondary"
+						disabled={ testing }
+						onClick={ handleReadiness }
+					>
+						{ testing ? 'Testing\u2026' : 'Test Configuration' }
+					</button>
+					<button
+						type="button"
 						className="ea-btn ea-btn--primary"
 						disabled={ saving }
 						onClick={ handleSave }
@@ -380,6 +415,24 @@ export default function OidcSettings( {
 						Cancel
 					</button>
 				</div>
+
+				{ readinessResult && (
+					<div className="ea-discovery">
+						<div className="ea-discovery__header">
+							<span className="ea-discovery__title">Configuration Check</span>
+						</div>
+						<p className="ea-discovery__desc">
+							Callback URL: { readinessResult.redirect_uri }
+						</p>
+						<ul className="ea-readiness-list">
+							{ ( readinessResult.checks || [] ).map( ( check ) => (
+								<li key={ check.code } className={ `ea-readiness-list__item ea-readiness-list__item--${ check.status }` }>
+									<strong>{ check.status }</strong> { check.message }
+								</li>
+							) ) }
+						</ul>
+					</div>
+				) }
 			</div>
 		);
 	}

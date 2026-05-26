@@ -195,6 +195,10 @@ Enterprise Auth includes an optional private-content login gate.
 
 ### OIDC
 
+Enterprise IAM supports OpenID Connect as a server-side Relying Party using the Authorization Code flow with PKCE. This is the profile expected for externally hosted university and enterprise IdPs such as Okta, Microsoft Entra ID, Auth0, and similar hosted providers.
+
+Enterprise IAM does not currently implement OIDC Implicit Flow, Hybrid Flow, Dynamic Client Registration, Form Post response mode, FAPI profiles, or formal OpenID Foundation RP certification. Treat it as a fixed-client Authorization Code + PKCE RP unless future release notes state otherwise.
+
 Configure:
 
 - Issuer
@@ -613,7 +617,7 @@ The codebase is structured in three layers, each separated by interface seams to
 - React (`@wordpress/components`, `@wordpress/element`)
 - WebAuthn (`web-auth/webauthn-lib`)
 - SAML (`onelogin/php-saml`)
-- OIDC (`jumbojett/openid-connect-php`)
+- OIDC Authorization Code + PKCE RP (`jumbojett/openid-connect-php`)
 
 ## License
 

@@ -13,6 +13,8 @@ This guide configures Okta for:
 
 ## Part A: OIDC Setup (Authorization Code with PKCE)
 
+Enterprise IAM acts as a fixed-client OpenID Connect Relying Party. Configure Okta for Authorization Code with PKCE only; Enterprise IAM does not currently support Implicit Flow, Hybrid Flow, Dynamic Client Registration, Form Post response mode, FAPI profiles, or formal OpenID Foundation RP certification.
+
 ## 1. Create the Okta OIDC app
 
 1. In Okta Admin, go to **Applications**.

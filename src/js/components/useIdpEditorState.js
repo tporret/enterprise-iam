@@ -116,6 +116,7 @@ export default function useIdpEditorState( {
 		roleMappings,
 		domainText,
 		setDomainText,
+		setEditing,
 		loadIdps,
 		startEdit,
 		startNew,

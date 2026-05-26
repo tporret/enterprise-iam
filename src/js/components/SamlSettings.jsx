@@ -78,6 +78,7 @@ export default function SamlSettings( {
 		roleMappings,
 		domainText,
 		setDomainText,
+		setEditing,
 		loadIdps,
 		startEdit,
 		startNew,

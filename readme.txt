@@ -24,7 +24,7 @@ Key features:
 * User IAM visibility on WordPress Users and Profile screens
 * Read-only WP-CLI operator surface under `wp enterprise-auth ...`
 * Enterprise SSO with SAML 2.0 Service Provider flow
-* Enterprise SSO with OpenID Connect (Authorization Code flow)
+* Enterprise SSO with OpenID Connect (Authorization Code + PKCE flow)
 * Domain-based login routing (email domain -> provider)
 * Just-In-Time user provisioning for SAML and OIDC
 * Multisite-aware tenant isolation for identity metadata, re-auth cookies, and protocol transient state
@@ -160,6 +160,7 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 == Security Notes ==
 
 * Multisite isolation: SSO / SCIM binding metadata, re-auth cookies, and protocol transients are site-scoped to prevent cross-site bleed on shared networks.
+* OIDC support is fixed-client Authorization Code + PKCE RP behavior. Implicit Flow, Hybrid Flow, Dynamic Client Registration, Form Post response mode, FAPI profiles, and formal OpenID Foundation RP certification are not currently implemented.
 * OIDC state, nonce, and code verifier are validated on callback and stored with short-lived transients rather than plugin-managed PHP sessions.
 * OIDC nonce validation is handled through the OIDC client flow.
 * SAML assertions are validated by the SAML toolkit.

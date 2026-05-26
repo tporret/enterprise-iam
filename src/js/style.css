@@ -1033,6 +1033,33 @@
 	flex: 1;
 }
 
+.ea-readiness-list {
+	margin: 10px 0 0;
+	padding-left: 18px;
+	font-size: 12px;
+	color: #334155;
+}
+
+.ea-readiness-list__item + .ea-readiness-list__item {
+	margin-top: 6px;
+}
+
+.ea-readiness-list__item strong {
+	text-transform: uppercase;
+}
+
+.ea-readiness-list__item--pass strong {
+	color: #166534;
+}
+
+.ea-readiness-list__item--warning strong {
+	color: #92400e;
+}
+
+.ea-readiness-list__item--fail strong {
+	color: #991b1b;
+}
+
 /* ── SCIM Provisioning Tab ───────────────────────────────────────────────── */
 .ea-card--wide {
 	grid-column: 1 / -1;
