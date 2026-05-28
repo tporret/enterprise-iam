@@ -147,6 +147,7 @@ final class OidcCallbackController {
 		$idp_id = $state_data['idp_id'] ?? '';
 		$nonce  = $state_data['nonce'] ?? '';
 		$code_verifier = $state_data['code_verifier'] ?? '';
+		$redirect_to = $this->validated_redirect_target( (string) ( $state_data['redirect_to'] ?? '' ) );
 		$blog_id = (int) ( $state_data['blog_id'] ?? get_current_blog_id() );
 		$idp    = CurrentSiteIdpManager::find_for_blog( $blog_id, (string) $idp_id );
 		$log_context = array(
@@ -322,7 +323,7 @@ final class OidcCallbackController {
 				return $this->error_redirect();
 			}
 
-			return $this->success_redirect();
+			return $this->success_redirect( $redirect_to );
 		} catch ( OpenIDConnectClientException $e ) {
 			$this->log_detailed_error(
 				$this->diagnostic_detail( 'oidc_token_exchange_failed', 'OIDC token exchange or token validation failed.' ),
@@ -375,8 +376,21 @@ final class OidcCallbackController {
 	/**
 	 * Redirect to the admin dashboard on successful login.
 	 */
-	private function success_redirect(): \WP_REST_Response {
-		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
+	private function success_redirect( string $redirect_to ): \WP_REST_Response {
+		$location = '' !== $redirect_to ? $redirect_to : admin_url();
+
+		return new \WP_REST_Response( null, 302, array( 'Location' => $location ) );
+	}
+
+	private function validated_redirect_target( string $redirect_to ): string {
+		$redirect_to = trim( $redirect_to );
+		if ( '' === $redirect_to ) {
+			return '';
+		}
+
+		$validated = wp_validate_redirect( $redirect_to, '' );
+
+		return is_string( $validated ) ? $validated : '';
 	}
 
 	/**

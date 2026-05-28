@@ -508,6 +508,12 @@ final class Core {
 			return;
 		}
 
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$redirect_to = isset( $_GET['redirect_to'] ) ? wp_validate_redirect( esc_url_raw( wp_unslash( $_GET['redirect_to'] ) ), '' ) : '';
+		if ( is_string( $redirect_to ) && '' !== $redirect_to ) {
+			$redirect = add_query_arg( 'redirect_to', $redirect_to, $redirect );
+		}
+
 		wp_safe_redirect( $redirect );
 		exit;
 	}

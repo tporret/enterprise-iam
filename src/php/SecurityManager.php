@@ -26,6 +26,7 @@ final class SecurityManager {
 		$this->lockdown_rest_api();
 		$this->restrict_application_passwords();
 		$this->block_suspended_users();
+		$this->enforce_suspended_active_sessions();
 		$this->block_sso_password_login();
 		$this->block_sso_password_reset();
 		$this->block_sso_email_change();
@@ -120,8 +121,8 @@ final class SecurityManager {
 	 *
 	 * Hooks into the `authenticate` filter at a late priority so it runs
 	 * after WordPress has resolved the user. If `is_scim_suspended` meta
-	 * is strictly "true", the login is rejected regardless of method
-	 * (password, Passkey, SSO).
+	 * is strictly "true", the login is rejected for WordPress-managed
+	 * authentication flows.
 	 */
 	private function block_suspended_users(): void {
 		add_filter(
@@ -132,26 +133,47 @@ final class SecurityManager {
 					return $user;
 				}
 
-				$network_suspended = get_user_meta( $user->ID, SiteMetaKeys::NETWORK_SCIM_SUSPENDED, true );
-				if ( 'true' === $network_suspended ) {
-					return new \WP_Error(
-						'account_suspended',
-						__( 'Account suspended by Identity Provider.', 'enterprise-auth' )
-					);
-				}
+				$allowed = SessionCreationGuard::may_create_session( $user );
 
-				$suspended = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_SUSPENDED ), true );
-				if ( 'true' === $suspended ) {
-					return new \WP_Error(
-						'account_suspended',
-						__( 'Account suspended by Identity Provider.', 'enterprise-auth' )
-					);
-				}
-
-				return $user;
+				return is_wp_error( $allowed ) ? $allowed : $user;
 			},
 			100,
 			2
+		);
+	}
+
+	/**
+	 * End already-active sessions when SCIM suspension lands after login.
+	 */
+	private function enforce_suspended_active_sessions(): void {
+		add_action(
+			'init',
+			static function (): void {
+				if ( ! is_user_logged_in() ) {
+					return;
+				}
+
+				$user = wp_get_current_user();
+				if ( ! ( $user instanceof \WP_User ) || ! SessionCreationGuard::is_scim_suspended( $user->ID ) ) {
+					return;
+				}
+
+				wp_logout();
+
+				if ( ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || wp_doing_ajax() || wp_doing_cron() ) {
+					return;
+				}
+
+				wp_safe_redirect(
+					add_query_arg(
+						'ea_sso_error',
+						rawurlencode( SessionCreationGuard::suspension_error()->get_error_message() ),
+						wp_login_url()
+					)
+				);
+				exit;
+			},
+			1
 		);
 	}
 

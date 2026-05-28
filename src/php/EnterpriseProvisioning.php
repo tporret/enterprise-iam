@@ -76,7 +76,10 @@ final class EnterpriseProvisioning {
 		// Map IdP groups → WP roles (only for SSO-provisioned users).
 		self::apply_role_mapping( $user, $idp, (array) ( $attributes['groups'] ?? array() ) );
 
-		self::finalize_authenticated_session( $user, $idp, $attributes, $idp_issuer );
+		$session = self::finalize_authenticated_session( $user, $idp, $attributes, $idp_issuer );
+		if ( is_wp_error( $session ) ) {
+			return $session;
+		}
 
 		return true;
 	}
@@ -278,7 +281,15 @@ final class EnterpriseProvisioning {
 		}
 	}
 
-	private static function finalize_authenticated_session( \WP_User $user, array $idp, array $attributes, string $idp_issuer ): void {
+	/**
+	 * @return true|\WP_Error
+	 */
+	private static function finalize_authenticated_session( \WP_User $user, array $idp, array $attributes, string $idp_issuer ) {
+		$allowed = SessionCreationGuard::may_create_session( $user );
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
 		self::identity_repository()->touchSsoLogin( $user->ID, time() );
 
 		$session_expires = $attributes['session_not_on_or_after'] ?? 0;
@@ -300,6 +311,11 @@ final class EnterpriseProvisioning {
 			}
 		} else {
 			self::identity_repository()->clearOidcIdToken( $user->ID );
+		}
+
+		$allowed = SessionCreationGuard::may_create_session( $user );
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
 		}
 
 		wp_set_auth_cookie( $user->ID, false );
@@ -329,6 +345,8 @@ final class EnterpriseProvisioning {
 				'idp_issuer'   => $idp_issuer,
 			)
 		);
+
+		return true;
 	}
 
 	/**

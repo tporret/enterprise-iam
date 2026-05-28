@@ -8,6 +8,7 @@ const SAML_PRESETS = [
 		email: 'email',
 		first_name: 'firstName',
 		last_name: 'lastName',
+		uid: 'uid',
 	},
 	{
 		id: 'azure-ad-saml',
@@ -18,6 +19,7 @@ const SAML_PRESETS = [
 			'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
 		last_name:
 			'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
+		uid: 'http://schemas.microsoft.com/identity/claims/objectidentifier',
 	},
 	{
 		id: 'shibboleth-saml',
@@ -26,6 +28,7 @@ const SAML_PRESETS = [
 		email: 'urn:oid:0.9.2342.19200300.100.1.3',
 		first_name: 'urn:oid:2.5.4.42',
 		last_name: 'urn:oid:2.5.4.4',
+		uid: 'urn:oid:0.9.2342.19200300.100.1.1',
 	},
 ];
 
@@ -56,6 +59,7 @@ const OIDC_PRESETS = [
  * @param {string}   props.providerFamily        Normalized provider family.
  * @param {boolean}  props.overrideMapping      Toggle state.
  * @param {string}   props.customEmailAttr      Custom email attribute key.
+ * @param {string}   props.customUidAttr        Custom immutable UID attribute key.
  * @param {string}   props.customFirstNameAttr  Custom first-name attribute key.
  * @param {string}   props.customLastNameAttr   Custom last-name attribute key.
  * @param {Function} props.onUpdateField        (key, value) callback.
@@ -65,6 +69,7 @@ export default function AttributeMappingSection( {
 	providerFamily,
 	overrideMapping,
 	customEmailAttr,
+	customUidAttr,
 	customFirstNameAttr,
 	customLastNameAttr,
 	onUpdateField,
@@ -82,10 +87,13 @@ export default function AttributeMappingSection( {
 			}
 
 			onUpdateField( 'custom_email_attr', preset.email );
+			if ( protocol === 'saml' ) {
+				onUpdateField( 'custom_uid_attr', preset.uid || '' );
+			}
 			onUpdateField( 'custom_first_name_attr', preset.first_name );
 			onUpdateField( 'custom_last_name_attr', preset.last_name );
 		},
-		[ onUpdateField ]
+		[ onUpdateField, protocol ]
 	);
 
 	const handlePreset = useCallback(
@@ -108,7 +116,7 @@ export default function AttributeMappingSection( {
 			return;
 		}
 
-		if ( customEmailAttr || customFirstNameAttr || customLastNameAttr ) {
+		if ( customEmailAttr || customUidAttr || customFirstNameAttr || customLastNameAttr ) {
 			return;
 		}
 
@@ -117,6 +125,7 @@ export default function AttributeMappingSection( {
 		overrideMapping,
 		recommendedPreset,
 		customEmailAttr,
+		customUidAttr,
 		customFirstNameAttr,
 		customLastNameAttr,
 		applyPreset,
@@ -178,6 +187,26 @@ export default function AttributeMappingSection( {
 							) ) }
 						</select>
 					</div>
+
+					{ protocol === 'saml' && (
+						<div className="ea-form-group">
+							<label className="ea-label">
+								Immutable UID Attribute Key
+							</label>
+							<input
+								type="text"
+								className="ea-input ea-input--mono"
+								placeholder="http://schemas.microsoft.com/identity/claims/objectidentifier"
+								value={ customUidAttr || '' }
+								onChange={ ( e ) =>
+									onUpdateField(
+										'custom_uid_attr',
+										e.target.value
+									)
+								}
+							/>
+						</div>
+					) }
 
 					<div className="ea-form-group">
 						<label className="ea-label">

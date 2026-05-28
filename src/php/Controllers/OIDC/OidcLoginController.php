@@ -38,6 +38,11 @@ final class OidcLoginController {
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_text_field',
 					),
+					'redirect_to' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'esc_url_raw',
+					),
 				),
 			)
 		);
@@ -47,8 +52,9 @@ final class OidcLoginController {
 	 * Redirect the user to the OIDC IdP for authentication.
 	 */
 	public function login( \WP_REST_Request $request ): \WP_REST_Response {
-		$idp_id = $request->get_param( 'idp_id' );
-		$idp    = CurrentSiteIdpManager::find( (string) $idp_id );
+		$idp_id      = $request->get_param( 'idp_id' );
+		$redirect_to = $this->validated_redirect_target( (string) $request->get_param( 'redirect_to' ) );
+		$idp         = CurrentSiteIdpManager::find( (string) $idp_id );
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'oidc' ) {
 			return new \WP_REST_Response( array( 'error' => 'OIDC IdP not found.' ), 404 );
@@ -90,7 +96,7 @@ final class OidcLoginController {
 				);
 			}
 
-			$flow = FederationFlowManager::start_oidc_flow( (string) $idp_id, get_current_blog_id() );
+			$flow = FederationFlowManager::start_oidc_flow( (string) $idp_id, get_current_blog_id(), $redirect_to );
 			if ( is_wp_error( $flow ) ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 				error_log( 'Enterprise IAM – OIDC login error: ' . $flow->get_error_message() );
@@ -127,6 +133,17 @@ final class OidcLoginController {
 				500
 			);
 		}
+	}
+
+	private function validated_redirect_target( string $redirect_to ): string {
+		$redirect_to = trim( $redirect_to );
+		if ( '' === $redirect_to ) {
+			return '';
+		}
+
+		$validated = wp_validate_redirect( $redirect_to, '' );
+
+		return is_string( $validated ) ? $validated : '';
 	}
 
 }

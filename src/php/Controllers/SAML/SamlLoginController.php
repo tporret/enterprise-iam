@@ -37,6 +37,11 @@ final class SamlLoginController {
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_text_field',
 					),
+					'redirect_to' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'esc_url_raw',
+					),
 				),
 			)
 		);
@@ -46,8 +51,9 @@ final class SamlLoginController {
 	 * Build the SAML AuthnRequest and redirect to the IdP SSO URL.
 	 */
 	public function login( \WP_REST_Request $request ): \WP_REST_Response {
-		$idp_id = $request->get_param( 'idp_id' );
-		$idp    = CurrentSiteIdpManager::find( (string) $idp_id );
+		$idp_id      = $request->get_param( 'idp_id' );
+		$redirect_to = $this->validated_redirect_target( (string) $request->get_param( 'redirect_to' ) );
+		$idp         = CurrentSiteIdpManager::find( (string) $idp_id );
 
 		if ( ! $idp || ( $idp['protocol'] ?? '' ) !== 'saml' ) {
 			return new \WP_REST_Response( array( 'error' => 'SAML IdP not found.' ), 404 );
@@ -95,7 +101,8 @@ final class SamlLoginController {
 						'redirect_url' => (string) $sso_url,
 						'request_id'   => (string) $request_id,
 					);
-				}
+				},
+				$redirect_to
 			);
 
 			if ( is_wp_error( $flow ) ) {
@@ -121,6 +128,17 @@ final class SamlLoginController {
 				500
 			);
 		}
+	}
+
+	private function validated_redirect_target( string $redirect_to ): string {
+		$redirect_to = trim( $redirect_to );
+		if ( '' === $redirect_to ) {
+			return '';
+		}
+
+		$validated = wp_validate_redirect( $redirect_to, '' );
+
+		return is_string( $validated ) ? $validated : '';
 	}
 
 }

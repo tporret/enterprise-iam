@@ -134,6 +134,16 @@ final class NetworkAdminController {
 			}
 		}
 
+		if (
+			! empty( $raw['id'] )
+			&& ( ! isset( $raw['saml_sp_private_key'] ) || '••••••••' === $raw['saml_sp_private_key'] || '' === $raw['saml_sp_private_key'] )
+		) {
+			$existing = NetworkIdpManager::find( sanitize_text_field( (string) $raw['id'] ) );
+			if ( $existing ) {
+				$raw['saml_sp_private_key'] = $existing['saml_sp_private_key'] ?? '';
+			}
+		}
+
 		$sanitized = IdpManager::sanitize( $raw );
 		if ( is_wp_error( $sanitized ) ) {
 			$status = $sanitized->get_error_data( 'enterprise_auth_invalid_idp_url' );

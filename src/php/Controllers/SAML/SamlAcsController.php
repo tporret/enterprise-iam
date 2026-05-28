@@ -82,6 +82,7 @@ final class SamlAcsController {
 
 		$idp_id     = sanitize_text_field( (string) ( $flow_data['idp_id'] ?? '' ) );
 		$request_id = sanitize_text_field( (string) ( $flow_data['request_id'] ?? '' ) );
+		$redirect_to = $this->validated_redirect_target( (string) ( $flow_data['redirect_to'] ?? '' ) );
 		$blog_id    = (int) ( $flow_data['blog_id'] ?? get_current_blog_id() );
 		$idp        = CurrentSiteIdpManager::find_for_blog( $blog_id, $idp_id );
 		$log_context['idp_id']   = $idp_id;
@@ -145,6 +146,19 @@ final class SamlAcsController {
 
 			// Extract user attributes.
 			$attributes = $this->extract_attributes( $auth, $idp );
+			if ( '' === (string) ( $attributes['idp_uid'] ?? '' ) ) {
+				$this->log_detailed_error(
+					$this->diagnostic_detail(
+						'saml_missing_persistent_subject',
+						'SAML assertion did not include a configured or known persistent immutable subject claim.'
+					),
+					$log_context + array(
+						'phase'       => 'claim_validation',
+						'diag_signal' => 'saml_missing_persistent_subject',
+					)
+				);
+				return $this->error_redirect();
+			}
 
 			// Honour SAML SessionNotOnOrAfter if the IdP provided one.
 			$session_expiry = $auth->getSessionExpiration();
@@ -169,7 +183,7 @@ final class SamlAcsController {
 				return $this->error_redirect();
 			}
 
-			return $this->success_redirect();
+			return $this->success_redirect( $redirect_to );
 		} catch ( \Throwable $e ) {
 			$this->log_detailed_error(
 				$this->diagnostic_detail( 'saml_acs_exception', 'Unhandled exception during SAML ACS processing.' ),
@@ -266,23 +280,7 @@ final class SamlAcsController {
 			?? $attrs['memberOf']
 			?? array();
 
-		// Prefer a dedicated persistent-identifier attribute if configured,
-		// since SAML NameID is often an email address and therefore mutable.
-		$uid = '';
-		if ( $use_custom && ! empty( $idp['custom_uid_attr'] ) ) {
-			$uid = $attrs[ $idp['custom_uid_attr'] ][0] ?? '';
-		}
-		if ( '' === $uid ) {
-			// Fallback: try well-known persistent-ID attributes.
-			$uid = $attrs['http://schemas.microsoft.com/identity/claims/objectidentifier'][0]
-				?? $attrs['urn:oid:0.9.2342.19200300.100.1.1'][0]  // uid
-				?? '';
-		}
-		if ( '' === $uid ) {
-			// Last resort: NameID.
-			$name_id = $auth->getNameId();
-			$uid     = is_string( $name_id ) ? $name_id : '';
-		}
+		$uid = $this->extract_persistent_uid( $attrs, $idp, $use_custom );
 
 		return array(
 			'email'          => $email,
@@ -294,6 +292,30 @@ final class SamlAcsController {
 			// performed above inherently vouches for all attribute values
 			// including email. Treat as email_verified unless overridden.
 			'email_verified' => true,
+		);
+	}
+
+	/**
+	 * @param array<string, mixed> $attrs
+	 * @param array<string, mixed> $idp
+	 */
+	private function extract_persistent_uid( array $attrs, array $idp, bool $use_custom ): string {
+		if ( $use_custom ) {
+			$custom_uid_attr = sanitize_text_field( (string) ( $idp['custom_uid_attr'] ?? '' ) );
+			if ( '' === $custom_uid_attr ) {
+				return '';
+			}
+
+			return sanitize_text_field( (string) ( $attrs[ $custom_uid_attr ][0] ?? '' ) );
+		}
+
+		return sanitize_text_field(
+			(string) (
+				$attrs['http://schemas.microsoft.com/identity/claims/objectidentifier'][0]
+				?? $attrs['urn:oid:0.9.2342.19200300.100.1.1'][0]
+				?? $attrs['urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'][0]
+				?? ''
+			)
 		);
 	}
 
@@ -322,8 +344,21 @@ final class SamlAcsController {
 	/**
 	 * Redirect to wp-admin on successful login.
 	 */
-	private function success_redirect(): \WP_REST_Response {
-		return new \WP_REST_Response( null, 302, array( 'Location' => admin_url() ) );
+	private function success_redirect( string $redirect_to ): \WP_REST_Response {
+		$location = '' !== $redirect_to ? $redirect_to : admin_url();
+
+		return new \WP_REST_Response( null, 302, array( 'Location' => $location ) );
+	}
+
+	private function validated_redirect_target( string $redirect_to ): string {
+		$redirect_to = trim( $redirect_to );
+		if ( '' === $redirect_to ) {
+			return '';
+		}
+
+		$validated = wp_validate_redirect( $redirect_to, '' );
+
+		return is_string( $validated ) ? $validated : '';
 	}
 
 }

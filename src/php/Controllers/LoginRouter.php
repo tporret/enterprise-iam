@@ -158,6 +158,11 @@ final class LoginRouter {
 				return $this->redirect_response( wp_login_url() );
 			}
 
+			$redirect_to = $this->validated_redirect_target( (string) ( $flow_data['redirect_to'] ?? '' ) );
+			if ( '' !== $redirect_to ) {
+				$redirect_url = add_query_arg( 'redirect_to', $redirect_to, $redirect_url );
+			}
+
 			return $this->redirect_response( $redirect_url );
 		}
 

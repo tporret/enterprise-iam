@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\CredentialRepository;
 use EnterpriseAuth\Plugin\OneTimeTransient;
+use EnterpriseAuth\Plugin\SessionCreationGuard;
 use EnterpriseAuth\Plugin\WebAuthnHelper;
 use Webauthn\AuthenticatorAssertionResponse;
 use Webauthn\PublicKeyCredential;
@@ -208,12 +209,18 @@ final class PasskeyLoginController {
 			return new \WP_REST_Response( array( 'error' => 'User not found.' ), 400 );
 		}
 
-		// Log the user in (session cookie, not persistent "remember me").
-		wp_set_auth_cookie( $wp_user_id, false, is_ssl() );
 		$wp_user = get_userdata( $wp_user_id );
 		if ( ! $wp_user instanceof \WP_User ) {
 			return new \WP_REST_Response( array( 'error' => 'User not found.' ), 400 );
 		}
+
+		$allowed = SessionCreationGuard::may_create_session( $wp_user );
+		if ( is_wp_error( $allowed ) ) {
+			return new \WP_REST_Response( array( 'error' => $allowed->get_error_message() ), 403 );
+		}
+
+		// Log the user in (session cookie, not persistent "remember me").
+		wp_set_auth_cookie( $wp_user_id, false, is_ssl() );
 
 		do_action( 'wp_login', $wp_user->user_login, $wp_user );
 

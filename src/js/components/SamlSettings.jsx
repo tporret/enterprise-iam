@@ -22,6 +22,11 @@ const EMPTY_IDP = {
 	sso_url: '',
 	slo_url: '',
 	certificate: '',
+	saml_sp_certificate: '',
+	saml_sp_private_key: '',
+	saml_authn_requests_signed: false,
+	saml_want_assertions_encrypted: false,
+	saml_want_nameid_encrypted: false,
 	domain_mapping: [],
 	role_mapping: {},
 	enabled: true,
@@ -347,11 +352,77 @@ export default function SamlSettings( {
 					/>
 				</div>
 
+				<div className="ea-form-group">
+					<label className="ea-label">SP x509 Certificate</label>
+					<textarea
+						className="ea-input ea-textarea"
+						rows={ 4 }
+						placeholder="Paste the Service Provider public certificate here"
+						value={ editing.saml_sp_certificate || '' }
+						onChange={ ( e ) =>
+							updateField( 'saml_sp_certificate', e.target.value )
+						}
+					/>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">SP Private Key</label>
+					<textarea
+						className="ea-input ea-textarea"
+						rows={ 4 }
+						placeholder="Paste the Service Provider private key here"
+						value={ editing.saml_sp_private_key || '' }
+						onChange={ ( e ) =>
+							updateField( 'saml_sp_private_key', e.target.value )
+						}
+					/>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">
+						<input
+							type="checkbox"
+							checked={ editing.saml_authn_requests_signed || false }
+							onChange={ ( e ) =>
+								updateField( 'saml_authn_requests_signed', e.target.checked )
+							}
+						/>{ ' ' }
+						Sign AuthnRequests
+					</label>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">
+						<input
+							type="checkbox"
+							checked={ editing.saml_want_assertions_encrypted || false }
+							onChange={ ( e ) =>
+								updateField( 'saml_want_assertions_encrypted', e.target.checked )
+							}
+						/>{ ' ' }
+						Require Encrypted Assertions
+					</label>
+				</div>
+
+				<div className="ea-form-group">
+					<label className="ea-label">
+						<input
+							type="checkbox"
+							checked={ editing.saml_want_nameid_encrypted || false }
+							onChange={ ( e ) =>
+								updateField( 'saml_want_nameid_encrypted', e.target.checked )
+							}
+						/>{ ' ' }
+						Require Encrypted NameID
+					</label>
+				</div>
+
 				<AttributeMappingSection
 					protocol="saml"
 					providerFamily={ editing.provider_family || 'generic' }
 					overrideMapping={ editing.override_attribute_mapping || false }
 					customEmailAttr={ editing.custom_email_attr || '' }
+					customUidAttr={ editing.custom_uid_attr || '' }
 					customFirstNameAttr={ editing.custom_first_name_attr || '' }
 					customLastNameAttr={ editing.custom_last_name_attr || '' }
 					onUpdateField={ updateField }

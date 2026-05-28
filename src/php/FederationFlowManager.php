@@ -23,7 +23,7 @@ final class FederationFlowManager {
 	 * @param callable(string):array<string, string>|\WP_Error $redirect_builder
 	 * @return array<string, string>|\WP_Error
 	 */
-	public static function start_saml_flow( string $idp_id, int $blog_id, callable $redirect_builder ) {
+	public static function start_saml_flow( string $idp_id, int $blog_id, callable $redirect_builder, string $redirect_to = '' ) {
 		$relay_state = self::random_hex( 16 );
 		if ( is_wp_error( $relay_state ) ) {
 			return $relay_state;
@@ -51,6 +51,7 @@ final class FederationFlowManager {
 				'idp_id'     => $idp_id,
 				'blog_id'    => $blog_id,
 				'request_id' => $request_id,
+				'redirect_to' => self::validated_redirect_target( $redirect_to ),
 			),
 			self::SAML_TTL_SECONDS
 		);
@@ -70,7 +71,7 @@ final class FederationFlowManager {
 	 *
 	 * @return array<string, string>|\WP_Error
 	 */
-	public static function start_oidc_flow( string $idp_id, int $blog_id ) {
+	public static function start_oidc_flow( string $idp_id, int $blog_id, string $redirect_to = '' ) {
 		$state = self::random_hex( 16 );
 		if ( is_wp_error( $state ) ) {
 			return $state;
@@ -97,6 +98,7 @@ final class FederationFlowManager {
 				'state'         => $state,
 				'nonce'         => $nonce,
 				'code_verifier' => $code_verifier,
+				'redirect_to'   => self::validated_redirect_target( $redirect_to ),
 			),
 			self::OIDC_TTL_SECONDS
 		);
@@ -132,5 +134,16 @@ final class FederationFlowManager {
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'ea_federation_flow_random', 'Federation flow values could not be generated.' );
 		}
+	}
+
+	private static function validated_redirect_target( string $redirect_to ): string {
+		$redirect_to = trim( $redirect_to );
+		if ( '' === $redirect_to ) {
+			return '';
+		}
+
+		$validated = wp_validate_redirect( $redirect_to, '' );
+
+		return is_string( $validated ) ? $validated : '';
 	}
 }

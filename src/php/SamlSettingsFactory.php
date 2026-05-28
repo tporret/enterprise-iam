@@ -33,7 +33,7 @@ final class SamlSettingsFactory {
 					'url'     => $acs_url,
 					'binding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',
 				),
-				'NameIDFormat'             => 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+				'NameIDFormat'             => 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent',
 			),
 			'idp'      => array(
 				'entityId'            => '',
@@ -60,6 +60,19 @@ final class SamlSettingsFactory {
 			$settings['idp']['entityId']                   = $idp['entity_id'] ?? '';
 			$settings['idp']['singleSignOnService']['url'] = $idp['sso_url'] ?? '';
 			$settings['idp']['x509cert']                   = self::clean_cert( $idp['certificate'] ?? '' );
+
+			$sp_cert = self::clean_cert( (string) ( $idp['saml_sp_certificate'] ?? '' ) );
+			$sp_key  = self::clean_private_key( (string) ( $idp['saml_sp_private_key'] ?? '' ) );
+			if ( '' !== $sp_cert ) {
+				$settings['sp']['x509cert'] = $sp_cert;
+			}
+			if ( '' !== $sp_key ) {
+				$settings['sp']['privateKey'] = $sp_key;
+			}
+
+			$settings['security']['authnRequestsSigned']     = ! empty( $idp['saml_authn_requests_signed'] );
+			$settings['security']['wantAssertionsEncrypted'] = ! empty( $idp['saml_want_assertions_encrypted'] );
+			$settings['security']['wantNameIdEncrypted']     = ! empty( $idp['saml_want_nameid_encrypted'] );
 		}
 
 		return $settings;
@@ -71,5 +84,15 @@ final class SamlSettingsFactory {
 	private static function clean_cert( string $cert ): string {
 		$cert = str_replace( array( '-----BEGIN CERTIFICATE-----', '-----END CERTIFICATE-----' ), '', $cert );
 		return trim( preg_replace( '/\s+/', '', $cert ) );
+	}
+
+	private static function clean_private_key( string $key ): string {
+		$key = str_replace(
+			array( '-----BEGIN PRIVATE KEY-----', '-----END PRIVATE KEY-----', '-----BEGIN RSA PRIVATE KEY-----', '-----END RSA PRIVATE KEY-----' ),
+			'',
+			$key
+		);
+
+		return trim( preg_replace( '/\s+/', '', $key ) );
 	}
 }
