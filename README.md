@@ -2,6 +2,8 @@
 
 Enterprise Auth is a WordPress plugin for enterprise-ready authentication, provisioning, and Multisite-aware identity workflows.
 
+Version 1.8.1 is tested up to WordPress 7.0.
+
 It combines:
 
 - Passkeys (WebAuthn)
@@ -9,6 +11,7 @@ It combines:
 - Employee self-service passkey enrollment from Profile -> Passkeys
 - SAML 2.0 Service Provider support
 - OpenID Connect (OIDC) support
+- OpenID Connect Discovery and readiness checks for safer provider setup
 - Domain-based SSO routing
 - Just-In-Time user provisioning
 - Network-managed Multisite defaults with per-setting site override policy
@@ -28,6 +31,7 @@ It combines:
 - Email change protection for SSO-managed users
 - Session expiry auto re-authentication (seamless redirect back to the correct IdP)
 - Force Sign-In Mode — per-IdP ForceAuthn (SAML) and prompt=login (OIDC)
+- OIDC End Session Endpoint storage for logout-aware and re-authentication configurations
 - First-link clean sweep for existing local accounts that become IdP-managed
 - Identity event audit hooks for SSO login and SCIM lifecycle actions
 - Durable IAM audit log for security events, passkey step-up, and high-risk configuration mutations
@@ -36,6 +40,8 @@ It combines:
 - Passkey credential inventory with masked provenance metadata
 - Fresh passkey step-up protection for high-risk IAM administration actions
 - REST API cache-control hardening — all plugin endpoints return `Cache-Control: no-store` to prevent CDN/proxy caching of dynamic responses
+- Federation flow hardening with browser-bound, short-lived, single-use SAML/OIDC state and HTTPS transport enforcement
+- SCIM pre-auth failed-attempt throttling before token verification work continues
 
 ## Highlights
 
@@ -69,6 +75,7 @@ It combines:
 ## Requirements
 
 - WordPress 6.0+
+- Tested up to WordPress 7.0
 - PHP 8.3+
 - Composer dependencies installed (`vendor/`)
 - Frontend assets built (`build/`)
@@ -201,14 +208,18 @@ Enterprise IAM does not currently implement OIDC Implicit Flow, Hybrid Flow, Dyn
 
 Configure:
 
+- Issuer or Discovery URL
 - Issuer
 - Authorization endpoint
 - Token endpoint
 - UserInfo endpoint
 - JWKS URI
+- End Session endpoint, when provided by the IdP
 - Client ID and client secret
 
-Users are redirected through the OIDC Authorization Code flow and validated on callback.
+Administrators can use server-side OpenID Connect Discovery to populate known endpoints from `/.well-known/openid-configuration`, then run readiness checks against the saved configuration before testing login.
+
+Users are redirected through the OIDC Authorization Code + PKCE flow and validated on callback.
 
 The plugin stores OIDC `state`, `nonce`, and `code_verifier` in short-lived, blog-scoped transients during the redirect flow. Callback verification does not depend on plugin-managed PHP sessions.
 
@@ -267,15 +278,16 @@ The Enterprise Auth admin UI includes a posture dashboard for quick risk review.
 
 ## Custom Attribute Mapping
 
-By default, the plugin uses a multi-format fallback chain for reading email, first name, and last name from IdP assertions (covering Azure AD URIs, Shibboleth OIDs, and standard short names simultaneously). When your IdP uses non-standard claim keys, you can override the defaults per provider.
+By default, the plugin uses a multi-format fallback chain for reading email, first name, last name, and SAML immutable UID values from IdP assertions (covering Azure AD URIs, Shibboleth OIDs, and standard short names simultaneously). When your IdP uses non-standard claim keys, you can override the defaults per provider.
 
 ### Enabling override
 
-In the SAML or OIDC editing form, toggle **Override Default Attribute Mapping**. Three text inputs appear:
+In the SAML or OIDC editing form, toggle **Override Default Attribute Mapping**. Custom mapping inputs appear:
 
 | Field | Description |
 |---|---|
 | Email Attribute Key | The assertion key or claim name containing the user's email address |
+| UID Attribute Key | Optional SAML assertion key containing the immutable user identifier |
 | First Name Attribute Key | The claim name for the user's given name |
 | Last Name Attribute Key | The claim name for the user's family name |
 
@@ -293,6 +305,8 @@ A **Load Preset** dropdown auto-fills all three keys for common enterprise IdPs.
 | Azure AD (Microsoft Entra) | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname` | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname` |
 | Shibboleth / InCommon (OIDs) | `urn:oid:0.9.2342.19200300.100.1.3` | `urn:oid:2.5.4.42` | `urn:oid:2.5.4.4` |
 
+SAML presets also include immutable UID defaults: Standard / Okta uses `uid`, Azure AD uses `http://schemas.microsoft.com/identity/claims/objectidentifier`, and Shibboleth / InCommon uses `urn:oid:0.9.2342.19200300.100.1.1`.
+
 **OIDC Presets**
 
 | Preset | Email | First Name | Last Name |
@@ -302,7 +316,7 @@ A **Load Preset** dropdown auto-fills all three keys for common enterprise IdPs.
 
 ### Persistence
 
-The toggle state (`override_attribute_mapping`) and three keys (`custom_email_attr`, `custom_first_name_attr`, `custom_last_name_attr`) are stored alongside all other IdP configuration in `wp_options` (`enterprise_auth_idps`) and are fully sanitized server-side before persistence.
+The toggle state (`override_attribute_mapping`) and custom keys (`custom_email_attr`, `custom_uid_attr`, `custom_first_name_attr`, `custom_last_name_attr`) are stored alongside all other IdP configuration in `wp_options` (`enterprise_auth_idps`) and are fully sanitized server-side before persistence.
 
 ### Provisioning behavior
 

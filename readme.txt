@@ -2,9 +2,9 @@
 Contributors: enterprise-auth-team
 Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, security
 Requires at least: 6.0
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 8.3
-Stable tag: 1.8.0
+Stable tag: 1.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,6 +25,7 @@ Key features:
 * Read-only WP-CLI operator surface under `wp enterprise-auth ...`
 * Enterprise SSO with SAML 2.0 Service Provider flow
 * Enterprise SSO with OpenID Connect (Authorization Code + PKCE flow)
+* OpenID Connect Discovery and readiness checks for safer IdP setup
 * Domain-based login routing (email domain -> provider)
 * Just-In-Time user provisioning for SAML and OIDC
 * Multisite-aware tenant isolation for identity metadata, re-auth cookies, and protocol transient state
@@ -41,13 +42,14 @@ Key features:
 * SCIM suspension blocks all login methods (password, passkey, SSO)
 * SCIM Provisioning admin tab to view SCIM Base URL, generate one-time tokens, and configure a site-level Deprovision Steward
 * Existing network users can be attached to the current site during Multisite SCIM create instead of duplicated globally
-* Custom attribute mapping per IdP — override the default claim keys for email, first name, and last name with an admin UI toggle and one-click presets for Azure AD (SAML + OIDC), Shibboleth/InCommon OIDs, and Standard/Okta
+* Custom attribute mapping per IdP — override the default claim keys for email, immutable UID, first name, and last name with an admin UI toggle and one-click presets for Azure AD (SAML + OIDC), Shibboleth/InCommon OIDs, and Standard/Okta
 * Effective settings resolution with Network Admin defaults, inheritance metadata, and site override enforcement
 * Private-content gate preserves `redirect_to` through local, passkey, and SSO login flows
 * SSO-only account lockdown — password login and password reset disabled for all SSO-managed users
 * Email change protection — SSO-managed users cannot change their email address
 * Session expiry auto re-authentication — expired sessions redirect transparently back to the user's IdP
 * Force Sign-In Mode — per-IdP toggle to bypass cached IdP sessions (SAML ForceAuthn / OIDC prompt=login)
+* OIDC End Session Endpoint storage for IdP-initiated re-auth and logout-aware configurations
 * Capability-aware role hardening blocks custom elevated roles for standard tenant IdPs
 * First-link clean sweep revokes legacy local credentials when an account becomes IdP-managed
 * Controlled passkey step-up migration for tenants that move from synced passkeys to device-bound authenticators
@@ -186,10 +188,20 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Email change protection: SSO-managed users cannot change their email address via the profile screen or REST API.
 * Session expiry auto re-auth: the `enterprise_auth_last_idp` cookie (site-scoped on Multisite; 90-day, HttpOnly, Secure, SameSite=Lax) enables seamless redirect to the correct IdP when a WP session expires.
 * Force Sign-In Mode: optional per-IdP setting appends ForceAuthn=true (SAML) or prompt=login (OIDC) to each authentication request.
+* Federation flow guard: SAML and OIDC flow state is browser-bound, single-use, short-lived, and rejected on insecure transport when HTTPS is required.
+* SCIM pre-auth abuse throttle: repeated invalid Bearer token attempts are rate-limited before token verification work continues, with counters reset after a successful authorized request.
 * REST API cache-control: all `enterprise-auth/` REST endpoints return `Cache-Control: no-store, no-cache, must-revalidate, private`, `Pragma: no-cache`, and `Expires: 0` headers. This defends against web cache deception and poisoning attacks where CDN or proxy URL-parser discrepancies could cause sensitive dynamic responses to be stored and served to other users.
 * Auditability: durable audit events record SSO/SCIM lifecycle activity, passkey enrollment, high-risk step-up outcomes, and protected IAM mutations. `ea_identity_event` hooks still fire for integrations, with delete events carrying reassignment and request metadata where available.
 
 == Changelog ==
+
+= 1.8.1 =
+* Compatibility: marked the plugin as tested up to WordPress 7.0 and aligned release metadata with version 1.8.1.
+* Feature: added server-side OpenID Connect Discovery and readiness checks for safer OIDC provider setup.
+* Feature: expanded SAML custom attribute mapping with immutable UID attribute support and provider presets.
+* Security: centralized SAML/OIDC federation flow state with browser-bound, short-lived, single-use transients and HTTPS transport enforcement.
+* Security: added SCIM pre-auth failed-attempt throttling and reset handling after successful authorized requests.
+* Fix: shared session creation guard now blocks SCIM-suspended users consistently across authentication paths before WordPress sessions are created.
 
 = 1.8.0 =
 * Feature: hardened private-content login gating for private custom post types and path-based private requests.
@@ -296,6 +308,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Group and wildcard role mapping
 
 == Upgrade Notice ==
+
+= 1.8.1 =
+Compatibility and federation hardening update. Review OIDC provider settings after upgrade if you want to use Discovery/readiness checks or configure the End Session Endpoint. No manual database migration required.
 
 = 1.8.0 =
 Adds enterprise IAM hardening surfaces: private-content resolution improvements, passkey provenance inventory, employee passkey self-enrollment, high-risk action step-up, durable audit logging, and the IAM posture dashboard. Database schema upgrades create an audit events table automatically on activation/runtime upgrade.
