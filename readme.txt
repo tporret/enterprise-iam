@@ -4,7 +4,7 @@ Tags: iam, identity, access-management, saml, oidc, passkeys, webauthn, sso, sec
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.3
-Stable tag: 1.8.1
+Stable tag: 1.8.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -195,6 +195,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 
 == Changelog ==
 
+= 1.8.2 =
+* Compatibility: bumped release metadata for the 1.8.2 tagged release.
+
 = 1.8.1 =
 * Compatibility: marked the plugin as tested up to WordPress 7.0 and aligned release metadata with version 1.8.1.
 * Feature: added server-side OpenID Connect Discovery and readiness checks for safer OIDC provider setup.
@@ -308,6 +311,9 @@ Yes. Each site can configure a Deprovision Steward in the SCIM settings screen. 
 * Group and wildcard role mapping
 
 == Upgrade Notice ==
+
+= 1.8.2 =
+Release metadata update only. No manual migration required.
 
 = 1.8.1 =
 Compatibility and federation hardening update. Review OIDC provider settings after upgrade if you want to use Discovery/readiness checks or configure the End Session Endpoint. No manual database migration required.

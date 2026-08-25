@@ -2,7 +2,7 @@
 
 Enterprise Auth is a WordPress plugin for enterprise-ready authentication, provisioning, and Multisite-aware identity workflows.
 
-Version 1.8.1 is tested up to WordPress 7.0.
+Version 1.8.2 is tested up to WordPress 7.0.
 
 It combines:
 
