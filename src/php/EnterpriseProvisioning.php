@@ -61,6 +61,10 @@ final class EnterpriseProvisioning {
 			return new \WP_Error( 'enterprise_provision', 'No valid email address in identity assertion.' );
 		}
 
+		if ( '' === $idp_uid ) {
+			return new \WP_Error( 'enterprise_provision', 'No immutable identity provider subject was present in the identity assertion.' );
+		}
+
 		$user = self::resolve_existing_user( $idp_id, $idp_uid, $idp_issuer, $email, $email_verified );
 		if ( is_wp_error( $user ) ) {
 			return $user;

@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use EnterpriseAuth\Plugin\SiteMetaKeys;
 use EnterpriseAuth\Plugin\SettingsController;
+use EnterpriseAuth\Plugin\EffectiveSettingsResolver;
 
 /**
  * SCIM 2.0 Provisioning Endpoint.
@@ -989,6 +990,10 @@ final class ScimController {
 				continue;
 			}
 
+			if ( ! self::is_scim_managed( $user ) ) {
+				continue;
+			}
+
 			// Skip administrators / break-glass accounts.
 			if ( 1 === $user->ID || in_array( 'administrator', (array) $user->roles, true ) ) {
 				continue;
@@ -1037,11 +1042,25 @@ final class ScimController {
 	 * @return true|\WP_Error
 	 */
 	public function authenticate_scim( \WP_REST_Request $request ) {
+		if ( ! self::is_site_scim_enabled() ) {
+			return new \WP_Error( 'rest_forbidden', 'SCIM provisioning is disabled by network policy for this site.', array( 'status' => 403 ) );
+		}
+
 		$result = $this->authenticate_bearer_token( $request );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
 		return true;
+	}
+
+	private static function is_site_scim_enabled(): bool {
+		if ( ! EffectiveSettingsResolver::uses_network_settings() ) {
+			return true;
+		}
+
+		$policy = EffectiveSettingsResolver::read_network_policy();
+
+		return ! empty( $policy['allow_site_scim'] );
 	}
 
 	/**
