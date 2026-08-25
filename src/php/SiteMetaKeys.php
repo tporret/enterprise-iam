@@ -22,19 +22,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class SiteMetaKeys {
 
 	// ── Identity meta keys ──────────────────────────────────────────────
-	public const SSO_PROVIDER    = '_enterprise_auth_sso_provider';
-	public const IDP_UID         = '_enterprise_auth_idp_uid';
-	public const IDP_ISSUER      = '_enterprise_auth_idp_issuer';
+	public const SSO_PROVIDER = '_enterprise_auth_sso_provider';
+	public const IDP_UID      = '_enterprise_auth_idp_uid';
+	public const IDP_ISSUER   = '_enterprise_auth_idp_issuer';
 
 	// ── Session meta keys ───────────────────────────────────────────────
-	public const SSO_LOGIN_AT    = '_enterprise_auth_sso_login_at';
-	public const SESSION_EXPIRES = '_enterprise_auth_session_expires';
-	public const OIDC_ID_TOKEN   = '_enterprise_auth_oidc_id_token';
+	public const SSO_LOGIN_AT             = '_enterprise_auth_sso_login_at';
+	public const SESSION_EXPIRES          = '_enterprise_auth_session_expires';
+	public const OIDC_ID_TOKEN            = '_enterprise_auth_oidc_id_token';
 	public const PASSKEY_STEP_UP_REQUIRED = '_enterprise_auth_passkey_stepup_required';
 
 	// ── SCIM meta keys ──────────────────────────────────────────────────
-	public const SCIM_ID         = 'enterprise_iam_scim_id';
-	public const SCIM_SUSPENDED  = 'is_scim_suspended';
+	public const SCIM_ID                = 'enterprise_iam_scim_id';
+	public const SCIM_SUSPENDED         = 'is_scim_suspended';
 	public const NETWORK_SCIM_SUSPENDED = 'enterprise_iam_network_scim_suspended';
 
 	/**
@@ -44,15 +44,15 @@ final class SiteMetaKeys {
 	 * @var array<string, string>
 	 */
 	private const SHORT_MAP = array(
-		self::SSO_PROVIDER    => 'sso_provider',
-		self::IDP_UID         => 'idp_uid',
-		self::IDP_ISSUER      => 'idp_issuer',
-		self::SSO_LOGIN_AT    => 'sso_login_at',
-		self::SESSION_EXPIRES => 'session_expires',
-		self::OIDC_ID_TOKEN   => 'oidc_id_token',
+		self::SSO_PROVIDER             => 'sso_provider',
+		self::IDP_UID                  => 'idp_uid',
+		self::IDP_ISSUER               => 'idp_issuer',
+		self::SSO_LOGIN_AT             => 'sso_login_at',
+		self::SESSION_EXPIRES          => 'session_expires',
+		self::OIDC_ID_TOKEN            => 'oidc_id_token',
 		self::PASSKEY_STEP_UP_REQUIRED => 'passkey_stepup_required',
-		self::SCIM_ID         => 'scim_id',
-		self::SCIM_SUSPENDED  => 'scim_suspended',
+		self::SCIM_ID                  => 'scim_id',
+		self::SCIM_SUSPENDED           => 'scim_suspended',
 	);
 
 	/**

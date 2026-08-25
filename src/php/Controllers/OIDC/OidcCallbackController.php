@@ -27,9 +27,9 @@ use Jumbojett\OpenIDConnectClientException;
  */
 final class OidcCallbackController {
 
-	private const NAMESPACE = 'enterprise-auth/v1';
-	private const PUBLIC_ERROR_CODE = 'federation_failed';
-	private const DEBUG_PREFIX = '[DEBUG-fed-oidc]';
+	private const NAMESPACE              = 'enterprise-auth/v1';
+	private const PUBLIC_ERROR_CODE      = 'federation_failed';
+	private const DEBUG_PREFIX           = '[DEBUG-fed-oidc]';
 	private string $last_error_reference = '';
 
 	public function register_routes(): void {
@@ -70,9 +70,9 @@ final class OidcCallbackController {
 	 * Handle the OIDC authorization code callback.
 	 */
 	public function callback( \WP_REST_Request $request ): \WP_REST_Response {
-		$code  = $this->get_callback_param( $request, 'code' );
-		$state = $this->get_callback_param( $request, 'state' );
-		$error = $this->get_callback_param( $request, 'error' );
+		$code        = $this->get_callback_param( $request, 'code' );
+		$state       = $this->get_callback_param( $request, 'state' );
+		$error       = $this->get_callback_param( $request, 'error' );
 		$log_context = array(
 			'phase' => 'callback_entry',
 		);
@@ -144,13 +144,13 @@ final class OidcCallbackController {
 			return $this->error_redirect();
 		}
 
-		$idp_id = $state_data['idp_id'] ?? '';
-		$nonce  = $state_data['nonce'] ?? '';
+		$idp_id        = $state_data['idp_id'] ?? '';
+		$nonce         = $state_data['nonce'] ?? '';
 		$code_verifier = $state_data['code_verifier'] ?? '';
-		$redirect_to = $this->validated_redirect_target( (string) ( $state_data['redirect_to'] ?? '' ) );
-		$blog_id = (int) ( $state_data['blog_id'] ?? get_current_blog_id() );
-		$idp    = CurrentSiteIdpManager::find_for_blog( $blog_id, (string) $idp_id );
-		$log_context = array(
+		$redirect_to   = $this->validated_redirect_target( (string) ( $state_data['redirect_to'] ?? '' ) );
+		$blog_id       = (int) ( $state_data['blog_id'] ?? get_current_blog_id() );
+		$idp           = CurrentSiteIdpManager::find_for_blog( $blog_id, (string) $idp_id );
+		$log_context   = array(
 			'idp_id' => (string) $idp_id,
 		);
 
@@ -434,5 +434,4 @@ final class OidcCallbackController {
 
 		return sanitize_text_field( (string) $parsed_query[ $key ] );
 	}
-
 }

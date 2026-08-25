@@ -274,7 +274,7 @@ final class OidcDiscoveryController {
 		$this->add_check(
 			$checks,
 			'client_id_present',
-			'' !== trim( (string) ( $raw['client_id'] ?? '' ) ) ? 'pass' : 'fail',
+			trim( (string) ( $raw['client_id'] ?? '' ) ) !== '' ? 'pass' : 'fail',
 			'' !== trim( (string) ( $raw['client_id'] ?? '' ) )
 				? 'Client ID is configured.'
 				: 'Client ID is required before OIDC login can run.'

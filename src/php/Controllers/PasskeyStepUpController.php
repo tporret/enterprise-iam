@@ -54,7 +54,7 @@ final class PasskeyStepUpController {
 		if ( array() === $sources ) {
 			return new \WP_REST_Response(
 				array(
-					'code' => 'passkey_required',
+					'code'  => 'passkey_required',
 					'error' => __( 'Register a passkey before changing enterprise IAM configuration.', 'enterprise-auth' ),
 				),
 				409
@@ -155,7 +155,7 @@ final class PasskeyStepUpController {
 		return new \WP_REST_Response(
 			array(
 				'success' => true,
-				'ttl' => PasskeyStepUp::ttl(),
+				'ttl'     => PasskeyStepUp::ttl(),
 			),
 			200
 		);

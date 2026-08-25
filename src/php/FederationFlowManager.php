@@ -48,9 +48,9 @@ final class FederationFlowManager {
 			'saml',
 			$relay_state,
 			array(
-				'idp_id'     => $idp_id,
-				'blog_id'    => $blog_id,
-				'request_id' => $request_id,
+				'idp_id'      => $idp_id,
+				'blog_id'     => $blog_id,
+				'request_id'  => $request_id,
 				'redirect_to' => self::validated_redirect_target( $redirect_to ),
 			),
 			self::SAML_TTL_SECONDS

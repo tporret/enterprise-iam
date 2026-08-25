@@ -101,16 +101,16 @@ final class UserIdentityRepository {
 				'meta_query' => array(
 					'relation' => 'AND',
 					array(
-						'key' => SiteMetaKeys::key( SiteMetaKeys::IDP_UID ),
+						'key'   => SiteMetaKeys::key( SiteMetaKeys::IDP_UID ),
 						'value' => $idp_uid,
 					),
 					array(
-						'key' => SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ),
+						'key'   => SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ),
 						'value' => $provider_id,
 					),
 				),
-				'number' => 1,
-				'fields' => 'all',
+				'number'     => 1,
+				'fields'     => 'all',
 			)
 		);
 
@@ -122,15 +122,15 @@ final class UserIdentityRepository {
 	 */
 	public function readStateSnapshot( int $user_id ): array {
 		return array(
-			'provider_id' => $this->providerId( $user_id ),
-			'idp_uid' => $this->idpUid( $user_id ),
-			'issuer' => $this->issuer( $user_id ),
-			'scim_external_id' => $this->scimExternalId( $user_id ),
-			'suspended_site' => $this->isSiteSuspended( $user_id ),
-			'suspended_network' => $this->isNetworkSuspended( $user_id ),
-			'last_sso_login_at' => $this->lastSsoLoginAt( $user_id ),
+			'provider_id'        => $this->providerId( $user_id ),
+			'idp_uid'            => $this->idpUid( $user_id ),
+			'issuer'             => $this->issuer( $user_id ),
+			'scim_external_id'   => $this->scimExternalId( $user_id ),
+			'suspended_site'     => $this->isSiteSuspended( $user_id ),
+			'suspended_network'  => $this->isNetworkSuspended( $user_id ),
+			'last_sso_login_at'  => $this->lastSsoLoginAt( $user_id ),
 			'session_expires_at' => $this->sessionExpiresAt( $user_id ),
-			'step_up_required' => $this->isStepUpRequired( $user_id ),
+			'step_up_required'   => $this->isStepUpRequired( $user_id ),
 		);
 	}
 }

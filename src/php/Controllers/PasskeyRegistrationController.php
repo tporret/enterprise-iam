@@ -26,10 +26,10 @@ use Webauthn\AuthenticatorSelectionCriteria;
  */
 final class PasskeyRegistrationController {
 
-	private const NAMESPACE     = 'enterprise-auth/v1';
-	private const ROUTE         = '/passkeys/register';
-	private const TRANSIENT     = 'ea_webauthn_reg_';
-	private const CHALLENGE_TTL = 60; // seconds
+	private const NAMESPACE        = 'enterprise-auth/v1';
+	private const ROUTE            = '/passkeys/register';
+	private const TRANSIENT        = 'ea_webauthn_reg_';
+	private const CHALLENGE_TTL    = 60; // seconds
 	private const USER_HANDLE_META = '_enterprise_auth_webauthn_user_handle';
 	private PasskeyEnrollmentValidator $enrollment_validator;
 
@@ -74,7 +74,7 @@ final class PasskeyRegistrationController {
 		$challenge = WebAuthnHelper::generate_challenge();
 
 		// Build the user entity; the id is a stable opaque handle.
-		$user_handle  = hash( 'sha256', (string) $user_id, true );
+		$user_handle = hash( 'sha256', (string) $user_id, true );
 		update_user_meta( $user_id, self::USER_HANDLE_META, base64_encode( $user_handle ) );
 		$display_name = $user->display_name;
 		if ( '' === $display_name ) {
@@ -173,9 +173,9 @@ final class PasskeyRegistrationController {
 		AuditLogger::record(
 			'passkey_registered',
 			array(
-				'source'            => 'passkey',
-				'user_id'           => $user_id,
-				'compliance_status' => \EnterpriseAuth\Plugin\PasskeyPolicy::compliance_status_for_new_credential( $credential_source ),
+				'source'              => 'passkey',
+				'user_id'             => $user_id,
+				'compliance_status'   => \EnterpriseAuth\Plugin\PasskeyPolicy::compliance_status_for_new_credential( $credential_source ),
 				'registration_origin' => \EnterpriseAuth\Plugin\PasskeyPolicy::current_registration_origin(),
 			)
 		);
@@ -184,8 +184,8 @@ final class PasskeyRegistrationController {
 
 		return new \WP_REST_Response(
 			array(
-				'success' => true,
-				'message' => 'Passkey registered.',
+				'success'     => true,
+				'message'     => 'Passkey registered.',
 				'redirect_to' => $redirect_to,
 			),
 			200
@@ -214,5 +214,4 @@ final class PasskeyRegistrationController {
 			400
 		);
 	}
-
 }

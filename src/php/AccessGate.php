@@ -91,11 +91,11 @@ final class AccessGate {
 		if ( is_string( $name ) && '' !== $name ) {
 			$posts = get_posts(
 				array(
-					'name' => sanitize_title( $name ),
-					'post_type' => $this->private_content_post_types(),
-					'post_status' => array( 'private' ),
-					'posts_per_page' => 1,
-					'no_found_rows' => true,
+					'name'             => sanitize_title( $name ),
+					'post_type'        => $this->private_content_post_types(),
+					'post_status'      => array( 'private' ),
+					'posts_per_page'   => 1,
+					'no_found_rows'    => true,
 					'suppress_filters' => true,
 				)
 			);

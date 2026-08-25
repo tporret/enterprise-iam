@@ -24,9 +24,9 @@ use EnterpriseAuth\Plugin\SamlSettingsFactory;
  */
 final class SamlAcsController {
 
-	private const NAMESPACE = 'enterprise-auth/v1';
-	private const PUBLIC_ERROR_CODE = 'federation_failed';
-	private const DEBUG_PREFIX = '[DEBUG-fed-saml]';
+	private const NAMESPACE              = 'enterprise-auth/v1';
+	private const PUBLIC_ERROR_CODE      = 'federation_failed';
+	private const DEBUG_PREFIX           = '[DEBUG-fed-saml]';
 	private string $last_error_reference = '';
 
 	public function register_routes(): void {
@@ -80,11 +80,11 @@ final class SamlAcsController {
 			return $this->error_redirect();
 		}
 
-		$idp_id     = sanitize_text_field( (string) ( $flow_data['idp_id'] ?? '' ) );
-		$request_id = sanitize_text_field( (string) ( $flow_data['request_id'] ?? '' ) );
-		$redirect_to = $this->validated_redirect_target( (string) ( $flow_data['redirect_to'] ?? '' ) );
-		$blog_id    = (int) ( $flow_data['blog_id'] ?? get_current_blog_id() );
-		$idp        = CurrentSiteIdpManager::find_for_blog( $blog_id, $idp_id );
+		$idp_id                  = sanitize_text_field( (string) ( $flow_data['idp_id'] ?? '' ) );
+		$request_id              = sanitize_text_field( (string) ( $flow_data['request_id'] ?? '' ) );
+		$redirect_to             = $this->validated_redirect_target( (string) ( $flow_data['redirect_to'] ?? '' ) );
+		$blog_id                 = (int) ( $flow_data['blog_id'] ?? get_current_blog_id() );
+		$idp                     = CurrentSiteIdpManager::find_for_blog( $blog_id, $idp_id );
 		$log_context['idp_id']   = $idp_id;
 		$log_context['flow_key'] = $flow_key;
 
@@ -123,7 +123,7 @@ final class SamlAcsController {
 					$this->diagnostic_detail(
 						$signal,
 						'SAML validation failed: ' . implode( ', ', $errors )
-					. ( $reason ? ' — ' . $reason : '' ),
+						. ( $reason ? ' — ' . $reason : '' ),
 					),
 					$log_context + array(
 						'phase'       => 'assertion_validation',
@@ -360,5 +360,4 @@ final class SamlAcsController {
 
 		return is_string( $validated ) ? $validated : '';
 	}
-
 }

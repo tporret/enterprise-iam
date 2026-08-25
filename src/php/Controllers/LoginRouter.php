@@ -44,7 +44,7 @@ final class LoginRouter {
 				'callback'            => array( $this, 'route' ),
 				'permission_callback' => '__return_true',
 				'args'                => array(
-					'email' => array(
+					'email'       => array(
 						'type'              => 'string',
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_email',
@@ -249,15 +249,15 @@ final class LoginRouter {
 
 		if ( 'sso' === ( $result['outcome'] ?? '' ) ) {
 			return array(
-				'outcome' => 'sso',
+				'outcome'      => 'sso',
 				'redirect_url' => (string) ( $result['redirect_url'] ?? '' ),
-				'redirect_to' => (string) ( $result['redirect_to'] ?? '' ),
+				'redirect_to'  => (string) ( $result['redirect_to'] ?? '' ),
 			);
 		}
 
 		return array(
-			'outcome' => 'local',
-			'email' => $email,
+			'outcome'     => 'local',
+			'email'       => $email,
 			'redirect_to' => (string) ( $result['redirect_to'] ?? '' ),
 		);
 	}
@@ -292,7 +292,7 @@ final class LoginRouter {
 		if ( defined( 'ENTERPRISE_AUTH_TRUST_PROXY_HEADERS' ) && ENTERPRISE_AUTH_TRUST_PROXY_HEADERS ) {
 			$forwarded_for = sanitize_text_field( (string) $request->get_header( 'x-forwarded-for' ) );
 			if ( '' !== $forwarded_for ) {
-				$parts = explode( ',', $forwarded_for );
+				$parts     = explode( ',', $forwarded_for );
 				$candidate = trim( (string) ( $parts[0] ?? '' ) );
 				if ( filter_var( $candidate, FILTER_VALIDATE_IP ) ) {
 					return $candidate;

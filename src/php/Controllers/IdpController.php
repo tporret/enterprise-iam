@@ -187,5 +187,4 @@ final class IdpController {
 
 		return new \WP_REST_Response( array( 'deleted' => true ), 200 );
 	}
-
 }

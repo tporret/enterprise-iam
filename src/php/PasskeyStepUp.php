@@ -11,20 +11,44 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class PasskeyStepUp {
 
 	private const TRANSIENT_PREFIX = 'ea_passkey_stepup_verified_';
-	private const TTL = 10 * MINUTE_IN_SECONDS;
+	private const TTL              = 10 * MINUTE_IN_SECONDS;
 
 	/**
 	 * @var array<int, array{method:string, pattern:string}>
 	 */
 	private const HIGH_RISK_REST_ROUTES = array(
-		array( 'method' => 'POST', 'pattern' => '#^/enterprise-auth/v1/settings$#' ),
-		array( 'method' => 'POST', 'pattern' => '#^/enterprise-auth/v1/settings/scim-token$#' ),
-		array( 'method' => 'POST', 'pattern' => '#^/enterprise-auth/v1/idps$#' ),
-		array( 'method' => 'DELETE', 'pattern' => '#^/enterprise-auth/v1/idps/[a-f0-9-]+$#' ),
-		array( 'method' => 'POST', 'pattern' => '#^/enterprise-auth/v1/network/defaults$#' ),
-		array( 'method' => 'POST', 'pattern' => '#^/enterprise-auth/v1/network/idps$#' ),
-		array( 'method' => 'DELETE', 'pattern' => '#^/enterprise-auth/v1/network/idps/[a-f0-9-]+$#' ),
-		array( 'method' => 'POST', 'pattern' => '#^/enterprise-auth/v1/network/sites/\d+/assignments$#' ),
+		array(
+			'method'  => 'POST',
+			'pattern' => '#^/enterprise-auth/v1/settings$#',
+		),
+		array(
+			'method'  => 'POST',
+			'pattern' => '#^/enterprise-auth/v1/settings/scim-token$#',
+		),
+		array(
+			'method'  => 'POST',
+			'pattern' => '#^/enterprise-auth/v1/idps$#',
+		),
+		array(
+			'method'  => 'DELETE',
+			'pattern' => '#^/enterprise-auth/v1/idps/[a-f0-9-]+$#',
+		),
+		array(
+			'method'  => 'POST',
+			'pattern' => '#^/enterprise-auth/v1/network/defaults$#',
+		),
+		array(
+			'method'  => 'POST',
+			'pattern' => '#^/enterprise-auth/v1/network/idps$#',
+		),
+		array(
+			'method'  => 'DELETE',
+			'pattern' => '#^/enterprise-auth/v1/network/idps/[a-f0-9-]+$#',
+		),
+		array(
+			'method'  => 'POST',
+			'pattern' => '#^/enterprise-auth/v1/network/sites/\d+/assignments$#',
+		),
 	);
 
 	public static function is_high_risk_rest_request( \WP_REST_Request $request ): bool {

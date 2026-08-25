@@ -23,12 +23,12 @@ use EnterpriseAuth\Plugin\EffectiveSettingsResolver;
  */
 final class ScimController {
 
-	private const NAMESPACE    = 'enterprise-auth/v1';
-	private const TOKEN_KEY    = 'enterprise_iam_scim_token';
-	private const RATE_LIMIT   = 300; // requests per minute
-	private const PRE_AUTH_FAILURE_LIMIT = 30; // failed auth attempts per client window
-	private const PRE_AUTH_FAILURE_TTL   = 300;
-	private const DEPROVISION_SCOPE_SITE = 'site';
+	private const NAMESPACE                 = 'enterprise-auth/v1';
+	private const TOKEN_KEY                 = 'enterprise_iam_scim_token';
+	private const RATE_LIMIT                = 300; // requests per minute
+	private const PRE_AUTH_FAILURE_LIMIT    = 30; // failed auth attempts per client window
+	private const PRE_AUTH_FAILURE_TTL      = 300;
+	private const DEPROVISION_SCOPE_SITE    = 'site';
 	private const DEPROVISION_SCOPE_NETWORK = 'network';
 
 	/**
@@ -161,10 +161,10 @@ final class ScimController {
 			$args['search_columns'] = array( 'user_email' );
 		}
 
-		$user_query  = new \WP_User_Query( $args );
-		$users       = $user_query->get_results();
-		$total       = $user_query->get_total();
-		$resources   = array();
+		$user_query = new \WP_User_Query( $args );
+		$users      = $user_query->get_results();
+		$total      = $user_query->get_total();
+		$resources  = array();
 
 		foreach ( $users as $user ) {
 			$resources[] = self::format_scim_user( $user );
@@ -190,11 +190,13 @@ final class ScimController {
 
 		$body = $request->get_json_params();
 		if ( empty( $body ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'Request body must be valid JSON.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'Request body must be valid JSON.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		// ── Parse SCIM Core User attributes (RFC 7643 §4.1) ────────────
@@ -205,11 +207,13 @@ final class ScimController {
 		$active      = $body['active'] ?? true;
 
 		if ( empty( $user_name ) || ! is_email( $user_name ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'A valid email address is required in the "userName" field.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'A valid email address is required in the "userName" field.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		// ── Conflict detection ──────────────────────────────────────────
@@ -217,32 +221,38 @@ final class ScimController {
 		if ( '' !== $external_id ) {
 			$existing = self::find_user_by_scim_id( $external_id );
 			if ( $existing ) {
-				return self::scim_error_response( new \WP_Error(
-					'scim_conflict',
-					sprintf( 'A user with externalId "%s" already exists (WP ID %d).', $external_id, $existing->ID ),
-					array( 'status' => 409 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_conflict',
+						sprintf( 'A user with externalId "%s" already exists (WP ID %d).', $external_id, $existing->ID ),
+						array( 'status' => 409 )
+					)
+				);
 			}
 		}
 
 		// Check by email / userName.
 		$existing = get_user_by( 'email', $user_name );
 		if ( $existing && self::is_on_current_blog( $existing->ID ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_conflict',
-				sprintf( 'A user with userName "%s" already exists (WP ID %d).', $user_name, $existing->ID ),
-				array( 'status' => 409 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_conflict',
+					sprintf( 'A user with userName "%s" already exists (WP ID %d).', $user_name, $existing->ID ),
+					array( 'status' => 409 )
+				)
+			);
 		}
 
 		// Protect against provisioning an email that belongs to an admin.
 		$admin_by_login = get_user_by( 'login', $user_name );
 		if ( $admin_by_login && ( 1 === $admin_by_login->ID || in_array( 'administrator', (array) $admin_by_login->roles, true ) ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_forbidden',
-				'Administrator accounts cannot be provisioned via SCIM.',
-				array( 'status' => 403 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_forbidden',
+					'Administrator accounts cannot be provisioned via SCIM.',
+					array( 'status' => 403 )
+				)
+			);
 		}
 
 		// Multisite: if the user exists globally but is not yet a member of
@@ -250,25 +260,29 @@ final class ScimController {
 		// create a duplicate global user record.
 		if ( $existing && ! self::is_on_current_blog( $existing->ID ) ) {
 			if ( 1 === $existing->ID || is_super_admin( $existing->ID ) ) {
-				return self::scim_error_response( new \WP_Error(
-					'scim_forbidden',
-					'Administrator accounts cannot be provisioned via SCIM.',
-					array( 'status' => 403 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_forbidden',
+						'Administrator accounts cannot be provisioned via SCIM.',
+						array( 'status' => 403 )
+					)
+				);
 			}
 
 			$added = add_user_to_blog( get_current_blog_id(), $existing->ID, 'subscriber' );
 			if ( is_wp_error( $added ) ) {
-				return self::scim_error_response( new \WP_Error(
-					'scim_internal',
-					'Failed to attach existing user to this site: ' . $added->get_error_message(),
-					array( 'status' => 500 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_internal',
+						'Failed to attach existing user to this site: ' . $added->get_error_message(),
+						array( 'status' => 500 )
+					)
+				);
 			}
 
 			$display = trim( "$given_name $family_name" );
 			if ( '' === $display ) {
-				$display = $existing->display_name ?: $existing->user_login;
+				$display = '' !== $existing->display_name ? $existing->display_name : $existing->user_login;
 			}
 
 			$result = wp_update_user(
@@ -282,20 +296,24 @@ final class ScimController {
 			);
 
 			if ( is_wp_error( $result ) ) {
-				return self::scim_error_response( new \WP_Error(
-					'scim_internal',
-					'Failed to update attached user: ' . $result->get_error_message(),
-					array( 'status' => 500 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_internal',
+						'Failed to update attached user: ' . $result->get_error_message(),
+						array( 'status' => 500 )
+					)
+				);
 			}
 
 			$user = get_user_by( 'id', $existing->ID );
 			if ( ! $user ) {
-				return self::scim_error_response( new \WP_Error(
-					'scim_internal',
-					'Attached user could not be reloaded.',
-					array( 'status' => 500 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_internal',
+						'Attached user could not be reloaded.',
+						array( 'status' => 500 )
+					)
+				);
 			}
 
 			if ( ! $active ) {
@@ -344,11 +362,13 @@ final class ScimController {
 		);
 
 		if ( is_wp_error( $user_id ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_internal',
-				'Failed to create user: ' . $user_id->get_error_message(),
-				array( 'status' => 500 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_internal',
+					'Failed to create user: ' . $user_id->get_error_message(),
+					array( 'status' => 500 )
+				)
+			);
 		}
 
 		// Store SCIM binding meta.
@@ -409,11 +429,13 @@ final class ScimController {
 
 		$body = $request->get_json_params();
 		if ( empty( $body ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'Request body must be valid JSON.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'Request body must be valid JSON.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		$user_name   = sanitize_email( $body['userName'] ?? '' );
@@ -423,21 +445,25 @@ final class ScimController {
 		$active      = $body['active'] ?? true;
 
 		if ( empty( $user_name ) || ! is_email( $user_name ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'A valid email address is required in the "userName" field.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'A valid email address is required in the "userName" field.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		// Check for email collision with a different user.
 		$email_owner = get_user_by( 'email', $user_name );
 		if ( $email_owner && $email_owner->ID !== $user->ID ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_conflict',
-				sprintf( 'Email "%s" is already in use by a different user.', $user_name ),
-				array( 'status' => 409 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_conflict',
+					sprintf( 'Email "%s" is already in use by a different user.', $user_name ),
+					array( 'status' => 409 )
+				)
+			);
 		}
 
 		$display = trim( "$given_name $family_name" );
@@ -457,11 +483,13 @@ final class ScimController {
 		);
 
 		if ( is_wp_error( $result ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_internal',
-				'Failed to update user: ' . $result->get_error_message(),
-				array( 'status' => 500 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_internal',
+					'Failed to update user: ' . $result->get_error_message(),
+					array( 'status' => 500 )
+				)
+			);
 		}
 
 		// When the user is being suspended (active=false), destroy all
@@ -507,21 +535,25 @@ final class ScimController {
 
 		$body = $request->get_json_params();
 		if ( empty( $body ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'Request body must be valid JSON.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'Request body must be valid JSON.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		// ── Process SCIM PatchOp (RFC 7644 §3.5.2) ─────────────────────
 		$operations = $body['Operations'] ?? array();
 		if ( empty( $operations ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'PATCH body must contain an "Operations" array.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'PATCH body must contain an "Operations" array.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		foreach ( $operations as $op ) {
@@ -617,11 +649,13 @@ final class ScimController {
 					)
 				);
 
-				return self::scim_error_response( new \WP_Error(
-					'scim_bad_request',
-					'Network deprovision mode requires WordPress Multisite.',
-					array( 'status' => 400 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_bad_request',
+						'Network deprovision mode requires WordPress Multisite.',
+						array( 'status' => 400 )
+					)
+				);
 			}
 
 			$network_plan = self::build_network_deprovision_plan( $user->ID );
@@ -637,11 +671,13 @@ final class ScimController {
 					)
 				);
 
-				return self::scim_error_response( new \WP_Error(
-					'scim_forbidden',
-					'Network deprovision cannot manage administrator memberships.',
-					array( 'status' => 403 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_forbidden',
+						'Network deprovision cannot manage administrator memberships.',
+						array( 'status' => 403 )
+					)
+				);
 			}
 
 			if ( ! empty( $network_plan['conflicts'] ) ) {
@@ -650,18 +686,20 @@ final class ScimController {
 					array_merge(
 						$audit_base,
 						array(
-							'reason'           => 'missing_reassignment_target',
-							'conflict_blogs'   => $network_plan['conflicts'],
-							'blog_operations'  => $network_plan['blog_operations'],
+							'reason'          => 'missing_reassignment_target',
+							'conflict_blogs'  => $network_plan['conflicts'],
+							'blog_operations' => $network_plan['blog_operations'],
 						)
 					)
 				);
 
-				return self::scim_error_response( new \WP_Error(
-					'scim_conflict',
-					'Network deprovision requires a valid reassignment target on every site that still has authored content.',
-					array( 'status' => 409 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_conflict',
+						'Network deprovision requires a valid reassignment target on every site that still has authored content.',
+						array( 'status' => 409 )
+					)
+				);
 			}
 
 			$completed_operations = array();
@@ -685,12 +723,14 @@ final class ScimController {
 						)
 					);
 
-					return self::scim_error_response( new \WP_Error(
-						'scim_internal',
-						'Failed to remove user from site ' . (int) $site_plan['blog_id'] . ': ' . $removed->get_error_message()
-						. ( ! empty( $rollback['failed_blog_ids'] ) ? ' Rollback was only partially successful.' : '' ),
-						array( 'status' => 500 )
-					) );
+					return self::scim_error_response(
+						new \WP_Error(
+							'scim_internal',
+							'Failed to remove user from site ' . (int) $site_plan['blog_id'] . ': ' . $removed->get_error_message()
+							. ( ! empty( $rollback['failed_blog_ids'] ) ? ' Rollback was only partially successful.' : '' ),
+							array( 'status' => 500 )
+						)
+					);
 				}
 				restore_current_blog();
 				$completed_operations[] = $site_plan;
@@ -729,17 +769,19 @@ final class ScimController {
 				array_merge(
 					$audit_base,
 					array(
-						'reason'        => 'missing_reassignment_target',
-						'site_plan'     => $site_plan,
+						'reason'    => 'missing_reassignment_target',
+						'site_plan' => $site_plan,
 					)
 				)
 			);
 
-			return self::scim_error_response( new \WP_Error(
-				'scim_conflict',
-				'Cannot safely delete this user because no reassignment target is available for authored content on this site.',
-				array( 'status' => 409 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_conflict',
+					'Cannot safely delete this user because no reassignment target is available for authored content on this site.',
+					array( 'status' => 409 )
+				)
+			);
 		}
 
 		if ( is_multisite() ) {
@@ -758,16 +800,18 @@ final class ScimController {
 					)
 				);
 
-				return self::scim_error_response( new \WP_Error(
-					'scim_internal',
-					'Failed to remove user from this site: ' . $removed->get_error_message(),
-					array( 'status' => 500 )
-				) );
+				return self::scim_error_response(
+					new \WP_Error(
+						'scim_internal',
+						'Failed to remove user from this site: ' . $removed->get_error_message(),
+						array( 'status' => 500 )
+					)
+				);
 			}
 
 			self::clear_site_identity_binding( $user->ID, true );
 			$remaining_blog_ids = self::get_user_blog_ids( $user->ID );
-			$global_suspended  = false;
+			$global_suspended   = false;
 			if ( empty( $remaining_blog_ids ) ) {
 				self::set_network_scim_suspended( $user->ID, true );
 				$global_suspended = true;
@@ -809,11 +853,13 @@ final class ScimController {
 				)
 			);
 
-			return self::scim_error_response( new \WP_Error(
-				'scim_internal',
-				'Failed to delete the user.',
-				array( 'status' => 500 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_internal',
+					'Failed to delete the user.',
+					array( 'status' => 500 )
+				)
+			);
 		}
 
 		self::emit_identity_event(
@@ -888,29 +934,35 @@ final class ScimController {
 
 		$body = $request->get_json_params();
 		if ( empty( $body ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'Request body must be valid JSON.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'Request body must be valid JSON.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		$display_name = sanitize_text_field( $body['displayName'] ?? '' );
 		if ( '' === $display_name ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'The "displayName" attribute is required.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'The "displayName" attribute is required.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		$members = $body['members'] ?? array();
 		if ( count( $members ) > self::MAX_GROUP_MEMBERS ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				sprintf( 'Too many members. Maximum is %d per operation.', self::MAX_GROUP_MEMBERS ),
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					sprintf( 'Too many members. Maximum is %d per operation.', self::MAX_GROUP_MEMBERS ),
+					array( 'status' => 400 )
+				)
+			);
 		}
 		self::apply_group_to_members( $display_name, $members );
 
@@ -930,11 +982,13 @@ final class ScimController {
 
 		$body = $request->get_json_params();
 		if ( empty( $body ) ) {
-			return self::scim_error_response( new \WP_Error(
-				'scim_bad_request',
-				'Request body must be valid JSON.',
-				array( 'status' => 400 )
-			) );
+			return self::scim_error_response(
+				new \WP_Error(
+					'scim_bad_request',
+					'Request body must be valid JSON.',
+					array( 'status' => 400 )
+				)
+			);
 		}
 
 		$display_name = sanitize_text_field( $body['displayName'] ?? '' );
@@ -952,11 +1006,13 @@ final class ScimController {
 				foreach ( $value as $member ) {
 					$members[] = $member;
 					if ( count( $members ) > self::MAX_GROUP_MEMBERS ) {
-						return self::scim_error_response( new \WP_Error(
-							'scim_bad_request',
-							sprintf( 'Too many members. Maximum is %d per operation.', self::MAX_GROUP_MEMBERS ),
-							array( 'status' => 400 )
-						) );
+						return self::scim_error_response(
+							new \WP_Error(
+								'scim_bad_request',
+								sprintf( 'Too many members. Maximum is %d per operation.', self::MAX_GROUP_MEMBERS ),
+								array( 'status' => 400 )
+							)
+						);
 					}
 				}
 			}
@@ -1157,7 +1213,7 @@ final class ScimController {
 		if ( defined( 'ENTERPRISE_AUTH_TRUST_PROXY_HEADERS' ) && ENTERPRISE_AUTH_TRUST_PROXY_HEADERS ) {
 			$forwarded_for = sanitize_text_field( (string) $request->get_header( 'x-forwarded-for' ) );
 			if ( '' !== $forwarded_for ) {
-				$parts = explode( ',', $forwarded_for );
+				$parts     = explode( ',', $forwarded_for );
 				$candidate = trim( (string) ( $parts[0] ?? '' ) );
 				if ( filter_var( $candidate, FILTER_VALIDATE_IP ) ) {
 					$remote_addr = $candidate;
@@ -1696,10 +1752,10 @@ final class ScimController {
 		$scim_id = get_user_meta( $user->ID, SiteMetaKeys::key( SiteMetaKeys::SCIM_ID ), true );
 
 		$resource = array(
-			'schemas'    => array( 'urn:ietf:params:scim:schemas:core:2.0:User' ),
-			'id'         => (string) $user->ID,
-			'userName'   => $user->user_email,
-			'name'       => array(
+			'schemas'     => array( 'urn:ietf:params:scim:schemas:core:2.0:User' ),
+			'id'          => (string) $user->ID,
+			'userName'    => $user->user_email,
+			'name'        => array(
 				'givenName'  => $user->first_name,
 				'familyName' => $user->last_name,
 			),

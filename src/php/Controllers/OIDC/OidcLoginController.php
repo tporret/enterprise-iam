@@ -33,7 +33,7 @@ final class OidcLoginController {
 				'callback'            => array( $this, 'login' ),
 				'permission_callback' => '__return_true',
 				'args'                => array(
-					'idp_id' => array(
+					'idp_id'      => array(
 						'type'              => 'string',
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_text_field',
@@ -145,5 +145,4 @@ final class OidcLoginController {
 
 		return is_string( $validated ) ? $validated : '';
 	}
-
 }

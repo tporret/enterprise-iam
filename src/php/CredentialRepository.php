@@ -19,7 +19,7 @@ use Webauthn\TrustPath\TrustPath;
  */
 final class CredentialRepository {
 
-	public const COMPLIANCE_STATUS_COMPLIANT = 'compliant';
+	public const COMPLIANCE_STATUS_COMPLIANT            = 'compliant';
 	public const COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT = 'legacy_non_compliant';
 
 	/**
@@ -77,7 +77,7 @@ final class CredentialRepository {
 	public static function save( PublicKeyCredentialSource $source, int $user_id, string $compliance_status = self::COMPLIANCE_STATUS_COMPLIANT, string $registration_origin = '' ): void {
 		global $wpdb;
 
-		$table = DatabaseManager::table_name();
+		$table      = DatabaseManager::table_name();
 		$trust_path = self::serialize_trust_path( $source->trustPath );
 
 		// Accessing third-party object properties keeps their upstream names.
@@ -85,23 +85,23 @@ final class CredentialRepository {
 		$wpdb->insert(
 			$table,
 			array(
-				'user_id'          => $user_id,
+				'user_id'             => $user_id,
 				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
-				'credential_id'    => base64_encode( $source->publicKeyCredentialId ),
+				'credential_id'       => base64_encode( $source->publicKeyCredentialId ),
 				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
-				'public_key'       => base64_encode( $source->credentialPublicKey ),
-				'sign_count'       => $source->counter,
-				'transports'       => wp_json_encode( $source->transports ),
-				'attestation_type' => $source->attestationType,
-				'trust_path'       => $trust_path,
-				'aaguid'           => $source->aaguid->toRfc4122(),
-				'backup_eligible'  => self::bool_to_db_value( $source->backupEligible ),
-				'backup_status'    => self::bool_to_db_value( $source->backupStatus ),
-				'uv_initialized'   => self::bool_to_db_value( $source->uvInitialized ),
-				'compliance_status' => $compliance_status,
+				'public_key'          => base64_encode( $source->credentialPublicKey ),
+				'sign_count'          => $source->counter,
+				'transports'          => wp_json_encode( $source->transports ),
+				'attestation_type'    => $source->attestationType,
+				'trust_path'          => $trust_path,
+				'aaguid'              => $source->aaguid->toRfc4122(),
+				'backup_eligible'     => self::bool_to_db_value( $source->backupEligible ),
+				'backup_status'       => self::bool_to_db_value( $source->backupStatus ),
+				'uv_initialized'      => self::bool_to_db_value( $source->uvInitialized ),
+				'compliance_status'   => $compliance_status,
 				'registration_origin' => $registration_origin,
-				'created_at'       => current_time( 'mysql', true ),
-				'last_used_at'     => null,
+				'created_at'          => current_time( 'mysql', true ),
+				'last_used_at'        => null,
 			)
 		);
 		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
@@ -159,13 +159,13 @@ final class CredentialRepository {
 		}
 
 		return array(
-			'user_id' => (int) $row['user_id'],
-			'compliance_status' => (string) ( $row['compliance_status'] ?? self::COMPLIANCE_STATUS_COMPLIANT ),
-			'backup_eligible' => self::db_value_to_bool( $row['backup_eligible'] ?? null ),
-			'backup_status' => self::db_value_to_bool( $row['backup_status'] ?? null ),
+			'user_id'             => (int) $row['user_id'],
+			'compliance_status'   => (string) ( $row['compliance_status'] ?? self::COMPLIANCE_STATUS_COMPLIANT ),
+			'backup_eligible'     => self::db_value_to_bool( $row['backup_eligible'] ?? null ),
+			'backup_status'       => self::db_value_to_bool( $row['backup_status'] ?? null ),
 			'registration_origin' => (string) ( $row['registration_origin'] ?? '' ),
-			'created_at' => (string) ( $row['created_at'] ?? '' ),
-			'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
+			'created_at'          => (string) ( $row['created_at'] ?? '' ),
+			'last_used_at'        => (string) ( $row['last_used_at'] ?? '' ),
 		);
 	}
 
@@ -229,10 +229,10 @@ final class CredentialRepository {
 		}
 
 		$summary_template = array(
-			'total' => 0,
-			'compliant' => 0,
+			'total'                => 0,
+			'compliant'            => 0,
 			'legacy_non_compliant' => 0,
-			'last_used_at' => '',
+			'last_used_at'         => '',
 		);
 
 		$summaries = array();
@@ -268,10 +268,10 @@ final class CredentialRepository {
 			}
 
 			$summaries[ $user_id ] = array(
-				'total' => (int) ( $row['total'] ?? 0 ),
-				'compliant' => (int) ( $row['compliant'] ?? 0 ),
+				'total'                => (int) ( $row['total'] ?? 0 ),
+				'compliant'            => (int) ( $row['compliant'] ?? 0 ),
 				'legacy_non_compliant' => (int) ( $row['legacy_non_compliant'] ?? 0 ),
-				'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
+				'last_used_at'         => (string) ( $row['last_used_at'] ?? '' ),
 			);
 		}
 
@@ -368,25 +368,25 @@ final class CredentialRepository {
 		$user    = $user_id > 0 ? get_userdata( $user_id ) : false;
 
 		return array(
-			'id' => (int) ( $row['id'] ?? 0 ),
+			'id'                     => (int) ( $row['id'] ?? 0 ),
 			'credential_fingerprint' => substr( hash( 'sha256', (string) ( $row['credential_id'] ?? '' ) ), 0, 16 ),
-			'user' => array(
-				'id' => $user_id,
-				'login' => $user ? (string) $user->user_login : '',
-				'email' => $user ? (string) $user->user_email : '',
+			'user'                   => array(
+				'id'           => $user_id,
+				'login'        => $user ? (string) $user->user_login : '',
+				'email'        => $user ? (string) $user->user_email : '',
 				'display_name' => $user ? (string) $user->display_name : '',
 			),
-			'sign_count' => (int) ( $row['sign_count'] ?? 0 ),
-			'transports' => array_values( array_filter( array_map( 'strval', $transports ) ) ),
-			'attestation_type' => (string) ( $row['attestation_type'] ?? 'none' ),
-			'aaguid' => (string) ( $row['aaguid'] ?? '' ),
-			'backup_eligible' => self::db_value_to_bool( $row['backup_eligible'] ?? null ),
-			'backup_status' => self::db_value_to_bool( $row['backup_status'] ?? null ),
-			'uv_initialized' => self::db_value_to_bool( $row['uv_initialized'] ?? null ),
-			'compliance_status' => (string) ( $row['compliance_status'] ?? self::COMPLIANCE_STATUS_COMPLIANT ),
-			'registration_origin' => (string) ( $row['registration_origin'] ?? '' ),
-			'created_at' => (string) ( $row['created_at'] ?? '' ),
-			'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
+			'sign_count'             => (int) ( $row['sign_count'] ?? 0 ),
+			'transports'             => array_values( array_filter( array_map( 'strval', $transports ) ) ),
+			'attestation_type'       => (string) ( $row['attestation_type'] ?? 'none' ),
+			'aaguid'                 => (string) ( $row['aaguid'] ?? '' ),
+			'backup_eligible'        => self::db_value_to_bool( $row['backup_eligible'] ?? null ),
+			'backup_status'          => self::db_value_to_bool( $row['backup_status'] ?? null ),
+			'uv_initialized'         => self::db_value_to_bool( $row['uv_initialized'] ?? null ),
+			'compliance_status'      => (string) ( $row['compliance_status'] ?? self::COMPLIANCE_STATUS_COMPLIANT ),
+			'registration_origin'    => (string) ( $row['registration_origin'] ?? '' ),
+			'created_at'             => (string) ( $row['created_at'] ?? '' ),
+			'last_used_at'           => (string) ( $row['last_used_at'] ?? '' ),
 		);
 	}
 
@@ -398,7 +398,7 @@ final class CredentialRepository {
 
 		$table = DatabaseManager::table_name();
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
-		$b64   = base64_encode( $credential_id_binary );
+		$b64 = base64_encode( $credential_id_binary );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$row = $wpdb->get_row(
@@ -407,7 +407,7 @@ final class CredentialRepository {
 			ARRAY_A
 		);
 
-		return $row ?: null;
+		return $row ? $row : null;
 	}
 
 	private static function user_has_credential_with_status( int $user_id, string $status ): bool {

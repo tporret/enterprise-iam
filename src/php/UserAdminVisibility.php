@@ -13,7 +13,7 @@ final class UserAdminVisibility {
 	private const COLUMN_IDENTITY = 'enterprise_auth_identity';
 	private const COLUMN_PROVIDER = 'enterprise_auth_provider';
 	private const COLUMN_PASSKEYS = 'enterprise_auth_passkeys';
-	private const COLUMN_STATE = 'enterprise_auth_state';
+	private const COLUMN_STATE    = 'enterprise_auth_state';
 
 	private UserIdentityInspector $inspector;
 
@@ -290,9 +290,9 @@ final class UserAdminVisibility {
 	 * @param array<string, mixed> $passkeys
 	 */
 	private function passkey_summary_label( array $passkeys ): string {
-		$total      = (int) ( $passkeys['total'] ?? 0 );
-		$compliant  = (int) ( $passkeys['compliant'] ?? 0 );
-		$legacy     = (int) ( $passkeys['legacy_non_compliant'] ?? 0 );
+		$total     = (int) ( $passkeys['total'] ?? 0 );
+		$compliant = (int) ( $passkeys['compliant'] ?? 0 );
+		$legacy    = (int) ( $passkeys['legacy_non_compliant'] ?? 0 );
 
 		if ( $total <= 0 ) {
 			return __( 'None', 'enterprise-auth' );

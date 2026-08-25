@@ -10,9 +10,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NetworkSettingsSourceAdapter implements SettingsSourceInterface {
 
-	private const OPTION_KEY = 'enterprise_auth_settings';
+	private const OPTION_KEY                  = 'enterprise_auth_settings';
 	private const NETWORK_DEFAULTS_OPTION_KEY = 'enterprise_auth_network_defaults';
-	private const NETWORK_POLICY_OPTION_KEY = 'enterprise_auth_network_policy';
+	private const NETWORK_POLICY_OPTION_KEY   = 'enterprise_auth_network_policy';
 
 	public function usesNetworkSettings(): bool {
 		return true;

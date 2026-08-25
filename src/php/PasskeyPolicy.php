@@ -15,9 +15,9 @@ use Webauthn\PublicKeyCredentialSource;
  */
 final class PasskeyPolicy {
 
-	public const COMPLIANCE_STATUS_COMPLIANT = CredentialRepository::COMPLIANCE_STATUS_COMPLIANT;
+	public const COMPLIANCE_STATUS_COMPLIANT            = CredentialRepository::COMPLIANCE_STATUS_COMPLIANT;
 	public const COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT = CredentialRepository::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT;
-	private const STEP_UP_TRANSIENT_PREFIX = 'ea_stepup_';
+	private const STEP_UP_TRANSIENT_PREFIX              = 'ea_stepup_';
 
 	public static function requires_device_bound_authenticators(): bool {
 		$settings = SettingsController::read();

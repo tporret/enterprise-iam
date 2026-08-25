@@ -207,7 +207,7 @@ final class EnterpriseProvisioning {
 		$lock_key = 'ea_jit_' . md5( $email );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$wpdb->query( $wpdb->prepare( "SELECT GET_LOCK(%s, 5)", $lock_key ) );
+		$wpdb->query( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $lock_key ) );
 
 		try {
 			$user         = get_user_by( 'email', $email );
@@ -220,7 +220,7 @@ final class EnterpriseProvisioning {
 				}
 
 				$existing_provider = self::identity_repository()->providerId( $user->ID );
-				if ( ! empty( $existing_provider ) && $existing_provider !== ( $idp['id'] ?? '' ) ) {
+				if ( ! empty( $existing_provider ) && ( $idp['id'] ?? '' ) !== $existing_provider ) {
 					return new \WP_Error(
 						'enterprise_provision',
 						'This account is managed by a different identity provider.'
@@ -281,7 +281,7 @@ final class EnterpriseProvisioning {
 			return $created_user;
 		} finally {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			$wpdb->query( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_key ) );
+			$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_key ) );
 		}
 	}
 
@@ -334,7 +334,7 @@ final class EnterpriseProvisioning {
 					'expires'  => time() + ( 90 * DAY_IN_SECONDS ),
 					'path'     => COOKIEPATH,
 					'secure'   => is_ssl(),
-					'httponly'  => true,
+					'httponly' => true,
 					'samesite' => 'Lax',
 				)
 			);
@@ -383,12 +383,14 @@ final class EnterpriseProvisioning {
 		}
 
 		static $cache = array();
-		$cache_key = $idp_id . '|' . $idp_uid;
+		$cache_key    = $idp_id . '|' . $idp_uid;
 		if ( array_key_exists( $cache_key, $cache ) ) {
 			return $cache[ $cache_key ];
 		}
 
-		return $cache[ $cache_key ] = self::identity_repository()->findUserByBinding( $idp_id, $idp_uid );
+		$cache[ $cache_key ] = self::identity_repository()->findUserByBinding( $idp_id, $idp_uid );
+
+		return $cache[ $cache_key ];
 	}
 
 	/**

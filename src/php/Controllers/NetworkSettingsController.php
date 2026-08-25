@@ -21,13 +21,13 @@ final class NetworkSettingsController {
 			'/network/defaults',
 			array(
 				array(
-					'methods' => \WP_REST_Server::READABLE,
-					'callback' => array( $this, 'get_settings' ),
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_settings' ),
 					'permission_callback' => array( $this, 'check_permission' ),
 				),
 				array(
-					'methods' => \WP_REST_Server::CREATABLE,
-					'callback' => array( $this, 'update_settings' ),
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'update_settings' ),
 					'permission_callback' => array( $this, 'check_permission' ),
 				),
 			)

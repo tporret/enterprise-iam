@@ -33,20 +33,20 @@ final class IamPostureReporter {
 				$findings    = $this->findings( $summary, $settings, count( $providers ) );
 
 				return array(
-					'scope' => 'site',
-					'blog_id' => $blog_id,
+					'scope'     => 'site',
+					'blog_id'   => $blog_id,
 					'site_name' => get_bloginfo( 'name' ),
-					'site_url' => home_url( '/' ),
-					'score' => $this->score( $findings ),
-					'findings' => $findings,
-					'summary' => $summary,
-					'settings' => array(
-						'lockdown_mode' => (bool) ( $settings['lockdown_mode'] ?? false ),
-						'app_passwords' => (bool) ( $settings['app_passwords'] ?? false ),
+					'site_url'  => home_url( '/' ),
+					'score'     => $this->score( $findings ),
+					'findings'  => $findings,
+					'summary'   => $summary,
+					'settings'  => array(
+						'lockdown_mode'                  => (bool) ( $settings['lockdown_mode'] ?? false ),
+						'app_passwords'                  => (bool) ( $settings['app_passwords'] ?? false ),
 						'require_device_bound_authenticators' => (bool) ( $settings['require_device_bound_authenticators'] ?? false ),
 						'private_content_login_required' => (bool) ( $settings['private_content_login_required'] ?? false ),
-						'role_ceiling' => (string) ( $settings['role_ceiling'] ?? '' ),
-						'session_timeout' => (int) ( $settings['session_timeout'] ?? 0 ),
+						'role_ceiling'                   => (string) ( $settings['role_ceiling'] ?? '' ),
+						'session_timeout'                => (int) ( $settings['session_timeout'] ?? 0 ),
 					),
 					'providers' => $this->provider_summary( $providers ),
 				);
@@ -62,8 +62,8 @@ final class IamPostureReporter {
 			return $this->site_posture();
 		}
 
-		$sites      = get_sites( array( 'number' => 0 ) );
-		$site_rows  = array();
+		$sites       = get_sites( array( 'number' => 0 ) );
+		$site_rows   = array();
 		$total_score = 0;
 
 		foreach ( $sites as $site ) {
@@ -72,31 +72,31 @@ final class IamPostureReporter {
 			$total_score += (int) $site_posture['score'];
 
 			$site_rows[] = array(
-				'blog_id' => (int) $site->blog_id,
-				'name' => (string) ( $site_posture['site_name'] ?? '' ),
-				'url' => (string) ( $site_posture['site_url'] ?? '' ),
-				'score' => (int) $site_posture['score'],
-				'user_count' => (int) ( $site_posture['summary']['users']['total'] ?? 0 ),
-				'local_users' => (int) ( $site_posture['summary']['identity_sources']['local'] ?? 0 ),
-				'legacy_passkeys' => (int) ( $site_posture['summary']['passkeys']['legacy_non_compliant'] ?? 0 ),
+				'blog_id'                 => (int) $site->blog_id,
+				'name'                    => (string) ( $site_posture['site_name'] ?? '' ),
+				'url'                     => (string) ( $site_posture['site_url'] ?? '' ),
+				'score'                   => (int) $site_posture['score'],
+				'user_count'              => (int) ( $site_posture['summary']['users']['total'] ?? 0 ),
+				'local_users'             => (int) ( $site_posture['summary']['identity_sources']['local'] ?? 0 ),
+				'legacy_passkeys'         => (int) ( $site_posture['summary']['passkeys']['legacy_non_compliant'] ?? 0 ),
 				'users_requiring_step_up' => (int) ( $site_posture['summary']['passkeys']['users_requiring_step_up'] ?? 0 ),
 				'assigned_provider_count' => count( $assignment['assigned_idp_ids'] ?? array() ),
-				'finding_count' => count( $site_posture['findings'] ?? array() ),
+				'finding_count'           => count( $site_posture['findings'] ?? array() ),
 			);
 		}
 
 		$site_count = count( $site_rows );
 
 		return array(
-			'scope' => 'network',
-			'score' => $site_count > 0 ? (int) round( $total_score / $site_count ) : 100,
-			'sites' => $site_rows,
+			'scope'   => 'network',
+			'score'   => $site_count > 0 ? (int) round( $total_score / $site_count ) : 100,
+			'sites'   => $site_rows,
 			'summary' => array(
-				'site_count' => $site_count,
+				'site_count'              => $site_count,
 				'sites_needing_attention' => count( array_filter( $site_rows, static fn( array $site ): bool => (int) $site['score'] < 80 ) ),
-				'unassigned_sites' => count( array_filter( $site_rows, static fn( array $site ): bool => 0 === (int) $site['assigned_provider_count'] ) ),
-				'total_users' => array_sum( array_map( static fn( array $site ): int => (int) $site['user_count'], $site_rows ) ),
-				'legacy_passkeys' => array_sum( array_map( static fn( array $site ): int => (int) $site['legacy_passkeys'], $site_rows ) ),
+				'unassigned_sites'        => count( array_filter( $site_rows, static fn( array $site ): bool => 0 === (int) $site['assigned_provider_count'] ) ),
+				'total_users'             => array_sum( array_map( static fn( array $site ): int => (int) $site['user_count'], $site_rows ) ),
+				'legacy_passkeys'         => array_sum( array_map( static fn( array $site ): int => (int) $site['legacy_passkeys'], $site_rows ) ),
 				'users_requiring_step_up' => array_sum( array_map( static fn( array $site ): int => (int) $site['users_requiring_step_up'], $site_rows ) ),
 			),
 		);
@@ -108,24 +108,24 @@ final class IamPostureReporter {
 	 */
 	private function summarize_inspections( array $inspections ): array {
 		$summary = array(
-			'users' => array(
-				'total' => count( $inspections ),
+			'users'            => array(
+				'total'     => count( $inspections ),
 				'suspended' => 0,
 			),
 			'identity_sources' => array(
 				'local' => 0,
-				'sso' => 0,
-				'scim' => 0,
+				'sso'   => 0,
+				'scim'  => 0,
 				'mixed' => 0,
 			),
-			'passkeys' => array(
-				'total' => 0,
-				'compliant' => 0,
-				'legacy_non_compliant' => 0,
-				'users_with_passkeys' => 0,
-				'users_without_passkeys' => 0,
+			'passkeys'         => array(
+				'total'                   => 0,
+				'compliant'               => 0,
+				'legacy_non_compliant'    => 0,
+				'users_with_passkeys'     => 0,
+				'users_without_passkeys'  => 0,
 				'users_requiring_step_up' => 0,
-				'latest_last_used_at' => 0,
+				'latest_last_used_at'     => 0,
 			),
 		);
 
@@ -140,12 +140,12 @@ final class IamPostureReporter {
 				++$summary['users']['suspended'];
 			}
 
-			$passkeys = is_array( $inspection['passkeys'] ?? null ) ? $inspection['passkeys'] : array();
-			$total    = (int) ( $passkeys['total'] ?? 0 );
-			$summary['passkeys']['total'] += $total;
-			$summary['passkeys']['compliant'] += (int) ( $passkeys['compliant'] ?? 0 );
+			$passkeys                                     = is_array( $inspection['passkeys'] ?? null ) ? $inspection['passkeys'] : array();
+			$total                                        = (int) ( $passkeys['total'] ?? 0 );
+			$summary['passkeys']['total']                += $total;
+			$summary['passkeys']['compliant']            += (int) ( $passkeys['compliant'] ?? 0 );
 			$summary['passkeys']['legacy_non_compliant'] += (int) ( $passkeys['legacy_non_compliant'] ?? 0 );
-			$summary['passkeys'][ $total > 0 ? 'users_with_passkeys' : 'users_without_passkeys' ]++;
+			++$summary['passkeys'][ $total > 0 ? 'users_with_passkeys' : 'users_without_passkeys' ];
 
 			if ( ! empty( $passkeys['step_up_required'] ) ) {
 				++$summary['passkeys']['users_requiring_step_up'];
@@ -204,10 +204,10 @@ final class IamPostureReporter {
 	 */
 	private function finding( string $code, string $severity, string $message, int $weight ): array {
 		return array(
-			'code' => $code,
+			'code'     => $code,
 			'severity' => $severity,
-			'message' => $message,
-			'weight' => $weight,
+			'message'  => $message,
+			'weight'   => $weight,
 		);
 	}
 
@@ -218,8 +218,8 @@ final class IamPostureReporter {
 	private function provider_summary( array $providers ): array {
 		$summary = array(
 			'total' => count( $providers ),
-			'saml' => 0,
-			'oidc' => 0,
+			'saml'  => 0,
+			'oidc'  => 0,
 		);
 
 		foreach ( $providers as $provider ) {
@@ -249,7 +249,7 @@ final class IamPostureReporter {
 			'intval',
 			get_users(
 				array(
-					'fields' => 'ids',
+					'fields'  => 'ids',
 					'blog_id' => $blog_id,
 				)
 			)

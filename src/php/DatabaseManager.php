@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class DatabaseManager {
 
-	private const SCHEMA_VERSION = 4;
+	private const SCHEMA_VERSION        = 4;
 	private const SCHEMA_VERSION_OPTION = 'enterprise_auth_credentials_schema_version';
 
 	/**
@@ -41,7 +41,7 @@ final class DatabaseManager {
 
 		$table       = self::table_name();
 		$audit_table = self::audit_table_name();
-		$charset = $wpdb->get_charset_collate();
+		$charset     = $wpdb->get_charset_collate();
 
 		$credentials_sql = "CREATE TABLE {$table} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,

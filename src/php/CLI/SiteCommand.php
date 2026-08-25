@@ -26,11 +26,11 @@ final class SiteCommand extends BaseCommand {
 		if ( ! is_multisite() ) {
 			$assignment = SiteAssignmentManager::read_for_current_site();
 			$rows[]     = array(
-				'blog_id' => get_current_blog_id(),
-				'url' => home_url( '/' ),
-				'name' => get_bloginfo( 'name' ),
+				'blog_id'                 => get_current_blog_id(),
+				'url'                     => home_url( '/' ),
+				'name'                    => get_bloginfo( 'name' ),
 				'assigned_provider_count' => count( $assignment['assigned_idp_ids'] ),
-				'primary_provider_id' => $assignment['primary_idp_id'],
+				'primary_provider_id'     => $assignment['primary_idp_id'],
 			);
 		} else {
 			foreach ( get_sites( array( 'number' => 0 ) ) as $site ) {
@@ -39,11 +39,11 @@ final class SiteCommand extends BaseCommand {
 				$details    = get_blog_details( $blog_id );
 
 				$rows[] = array(
-					'blog_id' => $blog_id,
-					'url' => (string) ( $details->siteurl ?? $site->siteurl ?? '' ),
-					'name' => (string) ( $details->blogname ?? '' ),
+					'blog_id'                 => $blog_id,
+					'url'                     => (string) ( $details->siteurl ?? $site->siteurl ?? '' ),
+					'name'                    => (string) ( $details->blogname ?? '' ),
 					'assigned_provider_count' => count( $assignment['assigned_idp_ids'] ),
-					'primary_provider_id' => $assignment['primary_idp_id'],
+					'primary_provider_id'     => $assignment['primary_idp_id'],
 				);
 			}
 		}
@@ -87,16 +87,16 @@ final class SiteCommand extends BaseCommand {
 
 		$this->render_assoc(
 			array(
-				'blog_id' => $blog_id,
-				'assigned_provider_ids' => $assignment['assigned_idp_ids'],
-				'primary_provider_id' => $assignment['primary_idp_id'],
-				'effective_settings' => $settings,
-				'passkey_strict_mode' => (bool) ( $settings['require_device_bound_authenticators'] ?? false ),
-				'override_allowances' => $settings['scope_meta'] ?? array(),
+				'blog_id'                       => $blog_id,
+				'assigned_provider_ids'         => $assignment['assigned_idp_ids'],
+				'primary_provider_id'           => $assignment['primary_idp_id'],
+				'effective_settings'            => $settings,
+				'passkey_strict_mode'           => (bool) ( $settings['require_device_bound_authenticators'] ?? false ),
+				'override_allowances'           => $settings['scope_meta'] ?? array(),
 				'legacy_non_compliant_passkeys' => (int) $passkeys['legacy_non_compliant'],
-				'compliant_passkeys' => (int) $passkeys['compliant'],
-				'users_with_step_up_required' => $step_up,
-				'user_count' => count( $user_ids ),
+				'compliant_passkeys'            => (int) $passkeys['compliant'],
+				'users_with_step_up_required'   => $step_up,
+				'user_count'                    => count( $user_ids ),
 			),
 			$format
 		);

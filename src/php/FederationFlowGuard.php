@@ -102,7 +102,7 @@ final class FederationFlowGuard {
 			: '';
 		unset( $data['browser_binding'] );
 
-		if ( isset( $data['blog_id'] ) && (int) $data['blog_id'] !== get_current_blog_id() ) {
+		if ( isset( $data['blog_id'] ) && get_current_blog_id() !== (int) $data['blog_id'] ) {
 			return new \WP_Error( 'ea_federation_flow_blog_mismatch', 'Federation flow did not belong to the current site.' );
 		}
 

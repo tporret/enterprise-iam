@@ -60,9 +60,9 @@ final class ProviderCommand extends BaseCommand {
 		$details  = array_merge(
 			$summary,
 			array(
-				'domain_mapping' => array_values( (array) ( $provider['domain_mapping'] ?? array() ) ),
-				'role_mapping' => (array) ( $provider['role_mapping'] ?? array() ),
-				'has_client_secret' => '' !== (string) ( $provider['client_secret'] ?? '' ),
+				'domain_mapping'       => array_values( (array) ( $provider['domain_mapping'] ?? array() ) ),
+				'role_mapping'         => (array) ( $provider['role_mapping'] ?? array() ),
+				'has_client_secret'    => '' !== (string) ( $provider['client_secret'] ?? '' ),
 				'client_secret_masked' => '' !== (string) ( $provider['client_secret'] ?? '' ) ? $this->mask_identifier( (string) $provider['client_secret'] ) : '',
 			)
 		);
@@ -99,7 +99,7 @@ final class ProviderCommand extends BaseCommand {
 		foreach ( (array) ( $provider['domain_mapping'] ?? array() ) as $domain ) {
 			$rows[] = array(
 				'provider_id' => (string) ( $provider['id'] ?? '' ),
-				'domain' => (string) $domain,
+				'domain'      => (string) $domain,
 			);
 		}
 
@@ -153,16 +153,16 @@ final class ProviderCommand extends BaseCommand {
 			: 'site';
 
 		return array(
-			'id' => (string) ( $provider['id'] ?? '' ),
-			'provider_name' => (string) ( $provider['provider_name'] ?? '' ),
-			'protocol' => (string) ( $provider['protocol'] ?? '' ),
-			'provider_family' => (string) ( $provider['provider_family'] ?? '' ),
-			'enabled' => ! empty( $provider['enabled'] ) ? 'yes' : 'no',
+			'id'                   => (string) ( $provider['id'] ?? '' ),
+			'provider_name'        => (string) ( $provider['provider_name'] ?? '' ),
+			'protocol'             => (string) ( $provider['protocol'] ?? '' ),
+			'provider_family'      => (string) ( $provider['provider_family'] ?? '' ),
+			'enabled'              => ! empty( $provider['enabled'] ) ? 'yes' : 'no',
 			'domain_mapping_count' => count( (array) ( $provider['domain_mapping'] ?? array() ) ),
-			'role_mapping_count' => count( (array) ( $provider['role_mapping'] ?? array() ) ),
-			'super_tenant' => ! empty( $provider['super_tenant'] ) ? 'yes' : 'no',
-			'storage_scope' => $storage_scope,
-			'assignment_count' => NetworkMode::is_network_mode() ? SiteAssignmentManager::count_sites_for_idp( (string) ( $provider['id'] ?? '' ) ) : 0,
+			'role_mapping_count'   => count( (array) ( $provider['role_mapping'] ?? array() ) ),
+			'super_tenant'         => ! empty( $provider['super_tenant'] ) ? 'yes' : 'no',
+			'storage_scope'        => $storage_scope,
+			'assignment_count'     => NetworkMode::is_network_mode() ? SiteAssignmentManager::count_sites_for_idp( (string) ( $provider['id'] ?? '' ) ) : 0,
 		);
 	}
 
@@ -202,10 +202,10 @@ final class ProviderCommand extends BaseCommand {
 		}
 
 		return array(
-			'id' => (string) ( $provider['id'] ?? '' ),
+			'id'       => (string) ( $provider['id'] ?? '' ),
 			'protocol' => (string) ( $provider['protocol'] ?? '' ),
-			'valid' => array() === $errors,
-			'errors' => $errors,
+			'valid'    => array() === $errors,
+			'errors'   => $errors,
 		);
 	}
 }

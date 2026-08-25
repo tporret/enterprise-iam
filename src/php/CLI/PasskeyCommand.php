@@ -26,13 +26,13 @@ final class PasskeyCommand extends BaseCommand {
 
 		$this->render_assoc(
 			array(
-				'blog_id' => (int) ( $scope['blog_id'] ?? get_current_blog_id() ),
-				'user_count' => count( $user_ids ),
-				'total_credentials' => (int) $summary['total'],
-				'compliant_credentials' => (int) $summary['compliant'],
+				'blog_id'                          => (int) ( $scope['blog_id'] ?? get_current_blog_id() ),
+				'user_count'                       => count( $user_ids ),
+				'total_credentials'                => (int) $summary['total'],
+				'compliant_credentials'            => (int) $summary['compliant'],
 				'legacy_non_compliant_credentials' => (int) $summary['legacy_non_compliant'],
-				'latest_last_used_at' => $this->format_timestamp( (int) $summary['latest_last_used_at'] ),
-				'users_with_step_up_required' => $step_up,
+				'latest_last_used_at'              => $this->format_timestamp( (int) $summary['latest_last_used_at'] ),
+				'users_with_step_up_required'      => $step_up,
 			),
 			$format
 		);

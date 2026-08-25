@@ -44,15 +44,15 @@ final class SamlSettingsFactory {
 				'x509cert'            => '',
 			),
 			'security' => array(
-				'authnRequestsSigned'                       => false,
-				'wantAssertionsSigned'                      => true,
-				'wantAssertionsEncrypted'                   => false,
-				'wantNameIdEncrypted'                       => false,
-				'wantMessagesSigned'                        => true,
-				'destinationStrictlyMatches'                => true,
+				'authnRequestsSigned'        => false,
+				'wantAssertionsSigned'       => true,
+				'wantAssertionsEncrypted'    => false,
+				'wantNameIdEncrypted'        => false,
+				'wantMessagesSigned'         => true,
+				'destinationStrictlyMatches' => true,
 				'rejectUnsolicitedResponsesWithInResponseTo' => true,
-				'signatureAlgorithm'                        => 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
-				'digestAlgorithm'                           => 'http://www.w3.org/2001/04/xmlenc#sha256',
+				'signatureAlgorithm'         => 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+				'digestAlgorithm'            => 'http://www.w3.org/2001/04/xmlenc#sha256',
 			),
 		);
 

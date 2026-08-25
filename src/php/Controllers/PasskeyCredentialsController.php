@@ -37,7 +37,7 @@ final class PasskeyCredentialsController {
 	}
 
 	public function list_credentials( \WP_REST_Request $request ): \WP_REST_Response {
-		$limit       = (int) ( $request->get_param( 'per_page' ) ?: 100 );
+		$limit       = (int) ( $request->get_param( 'per_page' ) ? $request->get_param( 'per_page' ) : 100 );
 		$credentials = CredentialRepository::credential_inventory( $limit );
 
 		return new \WP_REST_Response(

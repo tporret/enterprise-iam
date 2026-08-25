@@ -30,7 +30,7 @@ final class PasskeyEnrollmentValidator {
 		} catch ( \Throwable $e ) {
 			return array(
 				'success' => false,
-				'code' => 'invalid_attestation_payload',
+				'code'    => 'invalid_attestation_payload',
 				'message' => 'The browser returned an invalid passkey attestation payload. Try again from a current browser on a managed device.',
 			);
 		}
@@ -39,7 +39,7 @@ final class PasskeyEnrollmentValidator {
 		if ( ! $response instanceof AuthenticatorAttestationResponse ) {
 			return array(
 				'success' => false,
-				'code' => 'invalid_attestation_response',
+				'code'    => 'invalid_attestation_response',
 				'message' => 'The browser did not return a valid passkey attestation response.',
 			);
 		}
@@ -54,7 +54,7 @@ final class PasskeyEnrollmentValidator {
 			PasskeyPolicy::enforce_device_bound_registration_policy( $credential_source );
 
 			return array(
-				'success' => true,
+				'success'           => true,
 				'credential_source' => $credential_source,
 			);
 		} catch ( \Throwable $e ) {
@@ -67,7 +67,7 @@ final class PasskeyEnrollmentValidator {
 
 			return array(
 				'success' => false,
-				'code' => $normalized_error['code'],
+				'code'    => $normalized_error['code'],
 				'message' => $normalized_error['message'],
 			);
 		}
@@ -79,7 +79,7 @@ final class PasskeyEnrollmentValidator {
 	private function normalize_error( \Throwable $error ): array {
 		if ( $error instanceof AttestationPolicyException ) {
 			return array(
-				'code' => $error->policy_code(),
+				'code'    => $error->policy_code(),
 				'message' => $error->user_message(),
 			);
 		}
@@ -92,27 +92,27 @@ final class PasskeyEnrollmentValidator {
 			|| str_contains( $message, 'pinned authenticator identity' )
 		) {
 			return array(
-				'code' => 'attestation_policy_rejected',
+				'code'    => 'attestation_policy_rejected',
 				'message' => 'This passkey does not provide the enterprise attestation required for enrollment. Use the built-in platform authenticator on a managed Safari device, not a roaming key or a non-verifiable passkey flow.',
 			);
 		}
 
 		if ( str_contains( $message, 'local trust bundle' ) ) {
 			return array(
-				'code' => 'trust_bundle_mismatch',
+				'code'    => 'trust_bundle_mismatch',
 				'message' => 'This platform authenticator is not in the current enterprise trust bundle. Launch support is limited to the current managed platform authenticator policy and does not include relaxed browser fallback paths.',
 			);
 		}
 
 		if ( str_contains( $message, 'device-bound passkey' ) || str_contains( $message, 'Synced backup-eligible passkeys' ) ) {
 			return array(
-				'code' => 'credential_sync_not_permitted',
+				'code'    => 'credential_sync_not_permitted',
 				'message' => 'Your organization requires a device-bound passkey on this managed device. Synced passkeys are not permitted.',
 			);
 		}
 
 		return array(
-			'code' => 'unsupported_authenticator',
+			'code'    => 'unsupported_authenticator',
 			'message' => 'Passkey registration failed because the authenticator did not meet the current enterprise policy. Review the passkey requirements on this page and try again from a supported managed device.',
 		);
 	}

@@ -24,10 +24,10 @@ use Webauthn\PublicKeyCredentialRequestOptions;
  */
 final class PasskeyLoginController {
 
-	private const NAMESPACE     = 'enterprise-auth/v1';
-	private const ROUTE         = '/passkeys/login';
-	private const TRANSIENT     = 'ea_webauthn_login_';
-	private const CHALLENGE_TTL = 60; // seconds
+	private const NAMESPACE        = 'enterprise-auth/v1';
+	private const ROUTE            = '/passkeys/login';
+	private const TRANSIENT        = 'ea_webauthn_login_';
+	private const CHALLENGE_TTL    = 60; // seconds
 	private const USER_HANDLE_META = '_enterprise_auth_webauthn_user_handle';
 
 	public function register_routes(): void {
@@ -40,7 +40,7 @@ final class PasskeyLoginController {
 					'callback'            => array( $this, 'get_request_options' ),
 					'permission_callback' => '__return_true', // public – login page
 					'args'                => array(
-						'email' => array(
+						'email'       => array(
 							'type'              => 'string',
 							'required'          => false,
 							'sanitize_callback' => 'sanitize_email',
@@ -68,9 +68,9 @@ final class PasskeyLoginController {
 	 * Otherwise, use discoverable / resident credentials.
 	 */
 	public function get_request_options( \WP_REST_Request $request ): \WP_REST_Response {
-		$email     = $request->get_param( 'email' );
+		$email       = $request->get_param( 'email' );
 		$redirect_to = $this->validated_redirect_target( (string) $request->get_param( 'redirect_to' ) );
-		$challenge = WebAuthnHelper::generate_challenge();
+		$challenge   = WebAuthnHelper::generate_challenge();
 
 		$allow_credentials = array();
 		$user_id           = 0;
@@ -105,8 +105,8 @@ final class PasskeyLoginController {
 			self::transient_key( $session_key ),
 			wp_json_encode(
 				array(
-					'options' => WebAuthnHelper::serializer()->serialize( $options, 'json' ),
-					'user_id' => $user_id,
+					'options'     => WebAuthnHelper::serializer()->serialize( $options, 'json' ),
+					'user_id'     => $user_id,
 					'redirect_to' => $redirect_to,
 				)
 			),
@@ -165,7 +165,7 @@ final class PasskeyLoginController {
 
 		// Look up the stored credential by credential ID.
 		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
-		$credential_source = CredentialRepository::find_by_credential_id( $pkc->rawId );
+		$credential_source   = CredentialRepository::find_by_credential_id( $pkc->rawId );
 		$credential_metadata = CredentialRepository::find_metadata_by_credential_id( $pkc->rawId );
 		if ( ! $credential_source ) {
 			return new \WP_REST_Response( array( 'error' => 'Credential not found.' ), 400 );
@@ -225,7 +225,7 @@ final class PasskeyLoginController {
 		do_action( 'wp_login', $wp_user->user_login, $wp_user );
 
 		$stored_redirect_to = $this->validated_redirect_target( (string) ( $stored['redirect_to'] ?? '' ) );
-		$redirect_to = '' !== $stored_redirect_to ? $stored_redirect_to : admin_url();
+		$redirect_to        = '' !== $stored_redirect_to ? $stored_redirect_to : admin_url();
 
 		if ( CredentialRepository::COMPLIANCE_STATUS_LEGACY_NON_COMPLIANT === ( $credential_metadata['compliance_status'] ?? '' ) ) {
 			if ( \EnterpriseAuth\Plugin\PasskeyPolicy::requires_device_bound_authenticators() ) {

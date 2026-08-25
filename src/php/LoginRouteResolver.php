@@ -19,18 +19,18 @@ final class LoginRouteResolver {
 		$email = sanitize_email( $email );
 		if ( ! is_email( $email ) ) {
 			return array(
-				'email' => $email,
-				'domain' => '',
-				'blog_id' => (int) ( $blog_id ?? get_current_blog_id() ),
-				'outcome' => 'local',
-				'reason' => 'invalid_email',
-				'redirect_url' => '',
-				'redirect_to' => '',
-				'matched_provider_id' => '',
-				'matched_provider_name' => '',
-				'matched_protocol' => '',
-				'user_exists_on_site' => false,
-				'user_id' => 0,
+				'email'                  => $email,
+				'domain'                 => '',
+				'blog_id'                => (int) ( $blog_id ?? get_current_blog_id() ),
+				'outcome'                => 'local',
+				'reason'                 => 'invalid_email',
+				'redirect_url'           => '',
+				'redirect_to'            => '',
+				'matched_provider_id'    => '',
+				'matched_provider_name'  => '',
+				'matched_protocol'       => '',
+				'user_exists_on_site'    => false,
+				'user_id'                => 0,
 				'user_bound_provider_id' => '',
 			);
 		}
@@ -40,9 +40,9 @@ final class LoginRouteResolver {
 		return $this->with_blog(
 			$blog_id,
 			function () use ( $email, $redirect_to ): array {
-				$parts  = explode( '@', $email );
-				$domain = strtolower( $parts[1] ?? '' );
-				$idp    = CurrentSiteIdpManager::find_by_domain( $domain );
+				$parts   = explode( '@', $email );
+				$domain  = strtolower( $parts[1] ?? '' );
+				$idp     = CurrentSiteIdpManager::find_by_domain( $domain );
 				$wp_user = get_user_by( 'email', $email );
 
 				if ( is_multisite() && $wp_user instanceof \WP_User && ! is_user_member_of_blog( $wp_user->ID, get_current_blog_id() ) ) {
@@ -50,18 +50,18 @@ final class LoginRouteResolver {
 				}
 
 				$result = array(
-					'email' => $email,
-					'domain' => $domain,
-					'blog_id' => get_current_blog_id(),
-					'outcome' => 'local',
-					'reason' => 'domain_not_mapped',
-					'redirect_url' => '',
-					'redirect_to' => $this->validated_redirect_target( $redirect_to ),
-					'matched_provider_id' => '',
-					'matched_provider_name' => '',
-					'matched_protocol' => '',
-					'user_exists_on_site' => $wp_user instanceof \WP_User,
-					'user_id' => $wp_user instanceof \WP_User ? $wp_user->ID : 0,
+					'email'                  => $email,
+					'domain'                 => $domain,
+					'blog_id'                => get_current_blog_id(),
+					'outcome'                => 'local',
+					'reason'                 => 'domain_not_mapped',
+					'redirect_url'           => '',
+					'redirect_to'            => $this->validated_redirect_target( $redirect_to ),
+					'matched_provider_id'    => '',
+					'matched_provider_name'  => '',
+					'matched_protocol'       => '',
+					'user_exists_on_site'    => $wp_user instanceof \WP_User,
+					'user_id'                => $wp_user instanceof \WP_User ? $wp_user->ID : 0,
 					'user_bound_provider_id' => $wp_user instanceof \WP_User ? (string) get_user_meta( $wp_user->ID, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true ) : '',
 				);
 

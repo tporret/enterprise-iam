@@ -123,8 +123,8 @@ final class Core {
 
 		return new \WP_REST_Response(
 			array(
-				'code' => 'passkey_step_up_required',
-				'error' => __( 'Confirm your passkey before changing enterprise IAM configuration.', 'enterprise-auth' ),
+				'code'        => 'passkey_step_up_required',
+				'error'       => __( 'Confirm your passkey before changing enterprise IAM configuration.', 'enterprise-auth' ),
 				'step_up_ttl' => PasskeyStepUp::ttl(),
 			),
 			403
@@ -193,8 +193,8 @@ final class Core {
 			return $length;
 		}
 
-		$settings       = SettingsController::read();
-		$timeout_hours  = $settings['session_timeout'] ?? 8;
+		$settings        = SettingsController::read();
+		$timeout_hours   = $settings['session_timeout'] ?? 8;
 		$timeout_seconds = $timeout_hours * HOUR_IN_SECONDS;
 
 		return min( $length, $timeout_seconds );
@@ -212,7 +212,7 @@ final class Core {
 			return;
 		}
 
-		$user_id     = get_current_user_id();
+		$user_id      = get_current_user_id();
 		$sso_provider = get_user_meta( $user_id, SiteMetaKeys::key( SiteMetaKeys::SSO_PROVIDER ), true );
 		if ( empty( $sso_provider ) ) {
 			return; // Local account.
@@ -463,7 +463,7 @@ final class Core {
 	 */
 	public function intercept_login_for_sso_reauth(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$action = sanitize_text_field( $_REQUEST['action'] ?? 'login' );
+		$action = isset( $_REQUEST['action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['action'] ) ) : 'login';
 
 		// Only intercept the default login action.
 		if ( 'login' !== $action && '' !== $action ) {

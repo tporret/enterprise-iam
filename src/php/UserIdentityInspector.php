@@ -45,7 +45,7 @@ final class UserIdentityInspector {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public function inspect_many( array $user_ids, ?int $blog_id = null ): array {
-		$blog_id = $blog_id ?? get_current_blog_id();
+		$blog_id  = $blog_id ?? get_current_blog_id();
 		$user_ids = array_values(
 			array_unique(
 				array_filter(
@@ -59,9 +59,9 @@ final class UserIdentityInspector {
 			return array();
 		}
 
-		$provider_map       = $this->provider_map_for_blog( $blog_id );
-		$passkey_summaries  = CredentialRepository::passkey_summaries_for_users( $user_ids );
-		$results            = array();
+		$provider_map      = $this->provider_map_for_blog( $blog_id );
+		$passkey_summaries = CredentialRepository::passkey_summaries_for_users( $user_ids );
+		$results           = array();
 
 		foreach ( $user_ids as $user_id ) {
 			$user = get_userdata( $user_id );
@@ -72,34 +72,34 @@ final class UserIdentityInspector {
 			$site_state = $this->read_site_state( $user->ID, $blog_id );
 			$provider   = $site_state['provider_id'] ? ( $provider_map[ $site_state['provider_id'] ] ?? null ) : null;
 			$passkeys   = $passkey_summaries[ $user->ID ] ?? array(
-				'total' => 0,
-				'compliant' => 0,
+				'total'                => 0,
+				'compliant'            => 0,
 				'legacy_non_compliant' => 0,
-				'last_used_at' => '',
+				'last_used_at'         => '',
 			);
 
 			$has_sso  = '' !== $site_state['provider_id'] || '' !== $site_state['idp_uid'] || '' !== $site_state['issuer'];
 			$has_scim = '' !== $site_state['scim_external_id'] || $site_state['suspended_site'] || $site_state['suspended_network'];
 
 			$results[ $user->ID ] = array(
-				'blog_id' => $blog_id,
-				'identity_source' => $this->identity_source( $has_sso, $has_scim ),
-				'provider_id' => $site_state['provider_id'],
-				'provider_name' => (string) ( $provider['provider_name'] ?? '' ),
-				'protocol' => (string) ( $provider['protocol'] ?? '' ),
-				'idp_uid_masked' => $this->mask_identifier( $site_state['idp_uid'] ),
-				'issuer' => $site_state['issuer'],
+				'blog_id'                 => $blog_id,
+				'identity_source'         => $this->identity_source( $has_sso, $has_scim ),
+				'provider_id'             => $site_state['provider_id'],
+				'provider_name'           => (string) ( $provider['provider_name'] ?? '' ),
+				'protocol'                => (string) ( $provider['protocol'] ?? '' ),
+				'idp_uid_masked'          => $this->mask_identifier( $site_state['idp_uid'] ),
+				'issuer'                  => $site_state['issuer'],
 				'scim_external_id_masked' => $this->mask_identifier( $site_state['scim_external_id'] ),
-				'suspended_site' => $site_state['suspended_site'],
-				'suspended_network' => $site_state['suspended_network'],
-				'last_sso_login_at' => $site_state['last_sso_login_at'],
-				'session_expires_at' => $site_state['session_expires_at'],
-				'passkeys' => array(
-					'total' => (int) ( $passkeys['total'] ?? 0 ),
-					'compliant' => (int) ( $passkeys['compliant'] ?? 0 ),
+				'suspended_site'          => $site_state['suspended_site'],
+				'suspended_network'       => $site_state['suspended_network'],
+				'last_sso_login_at'       => $site_state['last_sso_login_at'],
+				'session_expires_at'      => $site_state['session_expires_at'],
+				'passkeys'                => array(
+					'total'                => (int) ( $passkeys['total'] ?? 0 ),
+					'compliant'            => (int) ( $passkeys['compliant'] ?? 0 ),
 					'legacy_non_compliant' => (int) ( $passkeys['legacy_non_compliant'] ?? 0 ),
-					'last_used_at' => $this->mysql_to_timestamp( (string) ( $passkeys['last_used_at'] ?? '' ) ),
-					'step_up_required' => $site_state['step_up_required'],
+					'last_used_at'         => $this->mysql_to_timestamp( (string) ( $passkeys['last_used_at'] ?? '' ) ),
+					'step_up_required'     => $site_state['step_up_required'],
 				),
 			);
 		}
@@ -204,24 +204,24 @@ final class UserIdentityInspector {
 	 */
 	private function empty_result(): array {
 		return array(
-			'blog_id' => 0,
-			'identity_source' => 'local',
-			'provider_id' => '',
-			'provider_name' => '',
-			'protocol' => '',
-			'idp_uid_masked' => '',
-			'issuer' => '',
+			'blog_id'                 => 0,
+			'identity_source'         => 'local',
+			'provider_id'             => '',
+			'provider_name'           => '',
+			'protocol'                => '',
+			'idp_uid_masked'          => '',
+			'issuer'                  => '',
 			'scim_external_id_masked' => '',
-			'suspended_site' => false,
-			'suspended_network' => false,
-			'last_sso_login_at' => 0,
-			'session_expires_at' => 0,
-			'passkeys' => array(
-				'total' => 0,
-				'compliant' => 0,
+			'suspended_site'          => false,
+			'suspended_network'       => false,
+			'last_sso_login_at'       => 0,
+			'session_expires_at'      => 0,
+			'passkeys'                => array(
+				'total'                => 0,
+				'compliant'            => 0,
 				'legacy_non_compliant' => 0,
-				'last_used_at' => 0,
-				'step_up_required' => false,
+				'last_used_at'         => 0,
+				'step_up_required'     => false,
 			),
 		);
 	}

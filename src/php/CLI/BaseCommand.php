@@ -59,7 +59,7 @@ abstract class BaseCommand {
 		$rows = array();
 		foreach ( $data as $key => $value ) {
 			$rows[] = array(
-				'key' => (string) $key,
+				'key'   => (string) $key,
 				'value' => $this->stringify_value( $value ),
 			);
 		}
@@ -171,15 +171,15 @@ abstract class BaseCommand {
 			static function () use ( $user_ids ): array {
 				$summaries = \EnterpriseAuth\Plugin\CredentialRepository::passkey_summaries_for_users( $user_ids );
 				$aggregate = array(
-					'total' => 0,
-					'compliant' => 0,
+					'total'                => 0,
+					'compliant'            => 0,
 					'legacy_non_compliant' => 0,
-					'latest_last_used_at' => 0,
+					'latest_last_used_at'  => 0,
 				);
 
 				foreach ( $summaries as $summary ) {
-					$aggregate['total'] += (int) ( $summary['total'] ?? 0 );
-					$aggregate['compliant'] += (int) ( $summary['compliant'] ?? 0 );
+					$aggregate['total']                += (int) ( $summary['total'] ?? 0 );
+					$aggregate['compliant']            += (int) ( $summary['compliant'] ?? 0 );
 					$aggregate['legacy_non_compliant'] += (int) ( $summary['legacy_non_compliant'] ?? 0 );
 
 					$last_used = strtotime( (string) ( $summary['last_used_at'] ?? '' ) . ' UTC' );
@@ -204,7 +204,7 @@ abstract class BaseCommand {
 					'intval',
 					get_users(
 						array(
-							'fields' => 'ids',
+							'fields'  => 'ids',
 							'blog_id' => get_current_blog_id(),
 						)
 					)

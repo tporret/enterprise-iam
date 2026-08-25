@@ -13,13 +13,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class AdminUI {
 
-	private const MENU_SLUG = 'enterprise-auth';
-	private const NETWORK_MENU_SLUG = 'enterprise-auth-network';
-	private const NETWORK_PROVIDERS_SLUG = 'enterprise-auth-network-providers';
-	private const NETWORK_ASSIGNMENTS_SLUG = 'enterprise-auth-network-assignments';
-	private const NETWORK_POLICY_SLUG = 'enterprise-auth-network-policy';
+	private const MENU_SLUG                 = 'enterprise-auth';
+	private const NETWORK_MENU_SLUG         = 'enterprise-auth-network';
+	private const NETWORK_PROVIDERS_SLUG    = 'enterprise-auth-network-providers';
+	private const NETWORK_ASSIGNMENTS_SLUG  = 'enterprise-auth-network-assignments';
+	private const NETWORK_POLICY_SLUG       = 'enterprise-auth-network-policy';
 	private const SELF_ENROLLMENT_MENU_SLUG = 'enterprise-auth-passkeys';
-	private const STEP_UP_MENU_SLUG = 'enterprise-auth-security-upgrade';
+	private const STEP_UP_MENU_SLUG         = 'enterprise-auth-security-upgrade';
 
 	public function init(): void {
 		add_action( 'admin_menu', array( $this, 'register_menu' ) );
@@ -166,7 +166,7 @@ final class AdminUI {
 
 		$this->enqueue_assets(
 			array(
-				'screen' => 'stepup',
+				'screen'    => 'stepup',
 				'stepUpUrl' => self::step_up_url(),
 				'logoutUrl' => wp_logout_url( wp_login_url() ),
 			)
@@ -207,15 +207,15 @@ final class AdminUI {
 			'enterpriseAuth',
 			array_merge(
 				array(
-					'restUrl'             => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
-					'nonce'               => wp_create_nonce( 'wp_rest' ),
-					'screen'              => 'settings',
-					'isNetworkMode'       => NetworkMode::is_network_mode(),
-					'isNetworkAdmin'      => is_network_admin(),
+					'restUrl'              => esc_url_raw( rest_url( 'enterprise-auth/v1/' ) ),
+					'nonce'                => wp_create_nonce( 'wp_rest' ),
+					'screen'               => 'settings',
+					'isNetworkMode'        => NetworkMode::is_network_mode(),
+					'isNetworkAdmin'       => is_network_admin(),
 					'isNetworkManagedSite' => ! is_network_admin() && CurrentSiteIdpManager::uses_network_control_plane(),
-					'idpManagementScope'  => CurrentSiteIdpManager::uses_network_control_plane() ? 'network' : 'site',
-					'blogId'              => get_current_blog_id(),
-					'guideLinks'          => array(
+					'idpManagementScope'   => CurrentSiteIdpManager::uses_network_control_plane() ? 'network' : 'site',
+					'blogId'               => get_current_blog_id(),
+					'guideLinks'           => array(
 						array(
 							'label' => __( 'Entra ID SAML Guide', 'enterprise-auth' ),
 							'url'   => esc_url_raw( ENTERPRISE_AUTH_URL . 'docs/customer-guides/Entra-ID-SAML-Setup.md' ),

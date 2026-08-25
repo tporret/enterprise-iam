@@ -145,6 +145,7 @@ final class LoginFlow {
 			$message   .= '<div id="login_error"><strong>SSO Error:</strong> ' . esc_html( $error_text );
 
 			if ( '' !== $reference ) {
+				/* translators: %s: federation error reference ID. */
 				$message .= '<br /><span class="ea-sso-error-reference">' . esc_html( sprintf( __( 'Reference ID: %s', 'enterprise-auth' ), $reference ) ) . '</span>';
 			}
 

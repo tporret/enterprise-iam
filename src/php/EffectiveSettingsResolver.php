@@ -10,31 +10,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class EffectiveSettingsResolver {
 
-	private const BOOLEAN_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'private_content_login_required' );
+	private const BOOLEAN_KEYS         = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'private_content_login_required' );
 	private const NETWORK_DEFAULT_KEYS = array( 'lockdown_mode', 'app_passwords', 'require_device_bound_authenticators', 'private_content_login_required', 'role_ceiling', 'session_timeout' );
 
 	private const DEFAULTS = array(
-		'lockdown_mode' => true,
-		'app_passwords' => false,
+		'lockdown_mode'                       => true,
+		'app_passwords'                       => false,
 		'require_device_bound_authenticators' => false,
-		'private_content_login_required' => false,
-		'role_ceiling' => 'editor',
-		'session_timeout' => 8,
-		'deprovision_steward_user_id' => 0,
+		'private_content_login_required'      => false,
+		'role_ceiling'                        => 'editor',
+		'session_timeout'                     => 8,
+		'deprovision_steward_user_id'         => 0,
 	);
 
 	private const NETWORK_POLICY_DEFAULTS = array(
-		'allow_site_overrides' => array(
-			'lockdown_mode' => false,
-			'app_passwords' => false,
+		'allow_site_overrides'     => array(
+			'lockdown_mode'                       => false,
+			'app_passwords'                       => false,
 			'require_device_bound_authenticators' => true,
-			'private_content_login_required' => true,
-			'role_ceiling' => false,
-			'session_timeout' => true,
-			'deprovision_steward_user_id' => true,
+			'private_content_login_required'      => true,
+			'role_ceiling'                        => false,
+			'session_timeout'                     => true,
+			'deprovision_steward_user_id'         => true,
 		),
 		'allow_site_role_mappings' => true,
-		'allow_site_scim' => true,
+		'allow_site_scim'          => true,
 	);
 
 	private const ALLOWED_CEILINGS = array( 'editor', 'author', 'contributor', 'subscriber' );
@@ -53,8 +53,8 @@ final class EffectiveSettingsResolver {
 	}
 
 	public static function read(): array {
-		$resolved = self::resolve();
-		$values   = $resolved['values'];
+		$resolved             = self::resolve();
+		$values               = $resolved['values'];
 		$values['scope_meta'] = $resolved['meta'];
 
 		return $values;
@@ -81,7 +81,7 @@ final class EffectiveSettingsResolver {
 	public static function read_network_settings_payload(): array {
 		return array(
 			'defaults' => self::read_network_defaults(),
-			'policy' => self::read_network_policy(),
+			'policy'   => self::read_network_policy(),
 		);
 	}
 
@@ -108,7 +108,7 @@ final class EffectiveSettingsResolver {
 
 		if ( $include_deprovision ) {
 			if ( array_key_exists( 'deprovision_steward_user_id', $params ) ) {
-				$candidate = absint( $params['deprovision_steward_user_id'] );
+				$candidate                                = absint( $params['deprovision_steward_user_id'] );
 				$sanitized['deprovision_steward_user_id'] = self::is_valid_steward_user_id( $candidate ) ? $candidate : 0;
 			} else {
 				$sanitized['deprovision_steward_user_id'] = (int) ( $fallback['deprovision_steward_user_id'] ?? self::DEFAULTS['deprovision_steward_user_id'] );
@@ -131,11 +131,11 @@ final class EffectiveSettingsResolver {
 		}
 
 		return array(
-			'allow_site_overrides' => $sanitized_allow_site_overrides,
+			'allow_site_overrides'     => $sanitized_allow_site_overrides,
 			'allow_site_role_mappings' => array_key_exists( 'allow_site_role_mappings', $policy )
 				? rest_sanitize_boolean( $policy['allow_site_role_mappings'] )
 				: (bool) self::NETWORK_POLICY_DEFAULTS['allow_site_role_mappings'],
-			'allow_site_scim' => array_key_exists( 'allow_site_scim', $policy )
+			'allow_site_scim'          => array_key_exists( 'allow_site_scim', $policy )
 				? rest_sanitize_boolean( $policy['allow_site_scim'] )
 				: (bool) self::NETWORK_POLICY_DEFAULTS['allow_site_scim'],
 		);
@@ -181,16 +181,16 @@ final class EffectiveSettingsResolver {
 
 		return array(
 			'values' => array(
-				'lockdown_mode' => (bool) ( $local_settings['lockdown_mode'] ?? self::DEFAULTS['lockdown_mode'] ),
-				'app_passwords' => (bool) ( $local_settings['app_passwords'] ?? self::DEFAULTS['app_passwords'] ),
+				'lockdown_mode'                       => (bool) ( $local_settings['lockdown_mode'] ?? self::DEFAULTS['lockdown_mode'] ),
+				'app_passwords'                       => (bool) ( $local_settings['app_passwords'] ?? self::DEFAULTS['app_passwords'] ),
 				'require_device_bound_authenticators' => (bool) ( $local_settings['require_device_bound_authenticators'] ?? self::DEFAULTS['require_device_bound_authenticators'] ),
-				'private_content_login_required' => (bool) ( $local_settings['private_content_login_required'] ?? self::DEFAULTS['private_content_login_required'] ),
-				'role_ceiling' => (string) ( $local_settings['role_ceiling'] ?? self::DEFAULTS['role_ceiling'] ),
-				'session_timeout' => (int) ( $local_settings['session_timeout'] ?? self::DEFAULTS['session_timeout'] ),
-				'deprovision_steward_user_id' => $steward_user_id,
-				'deprovision_steward_options' => self::get_steward_options(),
+				'private_content_login_required'      => (bool) ( $local_settings['private_content_login_required'] ?? self::DEFAULTS['private_content_login_required'] ),
+				'role_ceiling'                        => (string) ( $local_settings['role_ceiling'] ?? self::DEFAULTS['role_ceiling'] ),
+				'session_timeout'                     => (int) ( $local_settings['session_timeout'] ?? self::DEFAULTS['session_timeout'] ),
+				'deprovision_steward_user_id'         => $steward_user_id,
+				'deprovision_steward_options'         => self::get_steward_options(),
 			),
-			'meta' => $meta,
+			'meta'   => $meta,
 		);
 	}
 
@@ -241,7 +241,7 @@ final class EffectiveSettingsResolver {
 
 		$values['deprovision_steward_user_id'] = self::read_deprovision_steward_user_id();
 		$values['deprovision_steward_options'] = self::get_steward_options();
-		$meta['deprovision_steward_user_id'] = self::build_scope_meta(
+		$meta['deprovision_steward_user_id']   = self::build_scope_meta(
 			'site_only',
 			true,
 			'This setting remains site-scoped in network mode.'
@@ -249,7 +249,7 @@ final class EffectiveSettingsResolver {
 
 		return array(
 			'values' => $values,
-			'meta' => $meta,
+			'meta'   => $meta,
 		);
 	}
 
@@ -276,11 +276,11 @@ final class EffectiveSettingsResolver {
 		};
 
 		$meta = array(
-			'state' => $state,
-			'scope' => $scope,
-			'label' => $label,
-			'tone' => $tone,
-			'editable' => $editable,
+			'state'       => $state,
+			'scope'       => $scope,
+			'label'       => $label,
+			'tone'        => $tone,
+			'editable'    => $editable,
 			'overridable' => null !== $overridable ? $overridable : $editable,
 			'description' => $description,
 		);
@@ -311,9 +311,9 @@ final class EffectiveSettingsResolver {
 
 	private static function get_steward_options(): array {
 		$args = array(
-			'fields' => 'all',
+			'fields'  => 'all',
 			'orderby' => 'display_name',
-			'order' => 'ASC',
+			'order'   => 'ASC',
 		);
 
 		if ( is_multisite() ) {
@@ -327,8 +327,8 @@ final class EffectiveSettingsResolver {
 			}
 
 			$options[] = array(
-				'id' => $user->ID,
-				'label' => sprintf( '%s (%s, ID %d)', $user->display_name ?: $user->user_login, $user->user_email ?: $user->user_login, $user->ID ),
+				'id'    => $user->ID,
+				'label' => sprintf( '%s (%s, ID %d)', '' !== $user->display_name ? $user->display_name : $user->user_login, '' !== $user->user_email ? $user->user_email : $user->user_login, $user->ID ),
 			);
 		}
 
@@ -347,12 +347,12 @@ final class EffectiveSettingsResolver {
 		$defaults = self::sanitize_settings_payload( $settings_source->readNetworkDefaultsRaw(), self::DEFAULTS, false );
 
 		return array(
-			'lockdown_mode' => (bool) $defaults['lockdown_mode'],
-			'app_passwords' => (bool) $defaults['app_passwords'],
+			'lockdown_mode'                       => (bool) $defaults['lockdown_mode'],
+			'app_passwords'                       => (bool) $defaults['app_passwords'],
 			'require_device_bound_authenticators' => (bool) $defaults['require_device_bound_authenticators'],
-			'private_content_login_required' => (bool) $defaults['private_content_login_required'],
-			'role_ceiling' => (string) $defaults['role_ceiling'],
-			'session_timeout' => (int) $defaults['session_timeout'],
+			'private_content_login_required'      => (bool) $defaults['private_content_login_required'],
+			'role_ceiling'                        => (string) $defaults['role_ceiling'],
+			'session_timeout'                     => (int) $defaults['session_timeout'],
 		);
 	}
 
@@ -379,7 +379,7 @@ final class EffectiveSettingsResolver {
 		}
 
 		if ( array_key_exists( 'deprovision_steward_user_id', $raw ) ) {
-			$candidate = absint( $raw['deprovision_steward_user_id'] );
+			$candidate                            = absint( $raw['deprovision_steward_user_id'] );
 			$local['deprovision_steward_user_id'] = self::is_valid_steward_user_id( $candidate ) ? $candidate : 0;
 		}
 

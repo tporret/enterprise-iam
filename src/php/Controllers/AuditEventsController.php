@@ -34,7 +34,7 @@ final class AuditEventsController {
 	}
 
 	public function list_events( \WP_REST_Request $request ): \WP_REST_Response {
-		$limit  = (int) ( $request->get_param( 'per_page' ) ?: 100 );
+		$limit  = (int) ( $request->get_param( 'per_page' ) ? $request->get_param( 'per_page' ) : 100 );
 		$events = AuditLogger::events( $limit );
 
 		return new \WP_REST_Response(

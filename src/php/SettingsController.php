@@ -18,11 +18,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class SettingsController {
 
-	private const NAMESPACE = 'enterprise-auth/v1';
-	private const OPTION_KEY = 'enterprise_auth_settings';
+	private const NAMESPACE                   = 'enterprise-auth/v1';
+	private const OPTION_KEY                  = 'enterprise_auth_settings';
 	private const NETWORK_DEFAULTS_OPTION_KEY = 'enterprise_auth_network_defaults';
-	private const NETWORK_POLICY_OPTION_KEY = 'enterprise_auth_network_policy';
-	private const SCIM_TOKEN_OPTION = 'enterprise_iam_scim_token';
+	private const NETWORK_POLICY_OPTION_KEY   = 'enterprise_auth_network_policy';
+	private const SCIM_TOKEN_OPTION           = 'enterprise_iam_scim_token';
 
 	/**
 	 * Register REST routes.
@@ -136,8 +136,8 @@ final class SettingsController {
 		if ( array() !== $locked_fields ) {
 			return new \WP_REST_Response(
 				array(
-					'error' => 'One or more requested settings are locked by network policy.',
-					'code' => 'locked_by_network_policy',
+					'error'         => 'One or more requested settings are locked by network policy.',
+					'code'          => 'locked_by_network_policy',
 					'locked_fields' => array_values( array_unique( $locked_fields ) ),
 				),
 				403
@@ -253,7 +253,7 @@ final class SettingsController {
 
 		$results = array();
 		foreach ( get_sites( array( 'number' => 0 ) ) as $site ) {
-			$blog_id = (int) $site->blog_id;
+			$blog_id             = (int) $site->blog_id;
 			$results[ $blog_id ] = (bool) self::with_blog(
 				$blog_id,
 				static fn(): bool => (bool) ( self::read()['require_device_bound_authenticators'] ?? EffectiveSettingsResolver::defaults()['require_device_bound_authenticators'] )
@@ -283,12 +283,12 @@ final class SettingsController {
 	 */
 	private function get_update_args(): array {
 		return array(
-			'lockdown_mode' => array(
+			'lockdown_mode'                       => array(
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',
 			),
-			'app_passwords' => array(
+			'app_passwords'                       => array(
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',
@@ -298,24 +298,24 @@ final class SettingsController {
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',
 			),
-			'private_content_login_required' => array(
+			'private_content_login_required'      => array(
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => 'rest_sanitize_boolean',
 			),
-			'role_ceiling' => array(
+			'role_ceiling'                        => array(
 				'type'              => 'string',
 				'required'          => false,
 				'enum'              => array( 'editor', 'author', 'contributor', 'subscriber' ),
 				'sanitize_callback' => 'sanitize_text_field',
 			),
-			'session_timeout' => array(
+			'session_timeout'                     => array(
 				'type'              => 'integer',
 				'required'          => false,
 				'enum'              => array( 1, 2, 4, 8, 12, 24 ),
 				'sanitize_callback' => 'absint',
 			),
-			'deprovision_steward_user_id' => array(
+			'deprovision_steward_user_id'         => array(
 				'type'              => 'integer',
 				'required'          => false,
 				'sanitize_callback' => 'absint',

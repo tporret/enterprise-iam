@@ -13,11 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class AttestationPolicyException extends \RuntimeException {
 
-	public const CODE_ATTESTATION_FORMAT_REJECTED = 'attestation_format_rejected';
+	public const CODE_ATTESTATION_FORMAT_REJECTED     = 'attestation_format_rejected';
 	public const CODE_ATTESTATION_TRUST_PATH_REQUIRED = 'attestation_trust_path_required';
-	public const CODE_ATTESTATION_AAGUID_REQUIRED = 'attestation_aaguid_required';
-	public const CODE_TRUST_BUNDLE_MISMATCH = 'trust_bundle_mismatch';
-	public const CODE_CREDENTIAL_SYNC_NOT_PERMITTED = 'credential_sync_not_permitted';
+	public const CODE_ATTESTATION_AAGUID_REQUIRED     = 'attestation_aaguid_required';
+	public const CODE_TRUST_BUNDLE_MISMATCH           = 'trust_bundle_mismatch';
+	public const CODE_CREDENTIAL_SYNC_NOT_PERMITTED   = 'credential_sync_not_permitted';
 
 	private string $policy_code;
 
